@@ -1,0 +1,17 @@
+- key: "corporate_tax.rates.standard"
+  value:
+    - min: 0
+      max: 300000
+      rate: 0.10
+    - min: 300001
+      max: 1000000
+      rate: 0.20
+    - min: 1000001
+      max: null
+      rate: 0.35
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 19"
+  status: "out_of_scope"
+  note: "Impôt sur les Sociétés (IS) — Liquidation annuelle hors périmètre de la tenue mensuelle Phase 2-5"
+

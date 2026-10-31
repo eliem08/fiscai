@@ -74,7 +74,7 @@ class ExtractedField(BaseModel):
     value: Any = None
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     page: int = 1
-    bbox: list[float] | None = None  # [ymin, xmin, ymax, xmax]
+    bbox: list[float] | None = None  # [x0, y0, x1, y1] normalized to [0.0, 1.0]
 
 
 class ExtractedLineItem(BaseModel):

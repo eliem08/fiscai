@@ -14,4 +14,7 @@ files:
   - oec_position.yaml
   - einvoicing.yaml
   - issues.yaml
-  - invoices.yaml
+  - invoice_mentions.yaml
+  - corporate_tax.yaml
+  - penalties.yaml
+  - social_charges.yaml

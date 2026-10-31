@@ -151,7 +151,7 @@ def extract_fields_from_ocr(ocr: OcrResult, doc_type: str = "purchase_invoice") 
 
         # Invoice number extraction
         inv_no_match = re.search(
-            r"(?i)(?:Facture\s*(?:N[°o\.]?|no|num[eé]ro)?|Invoice\s*(?:No|number)?|رقم\s*الفاتورة)\s*[:#]?\s*([A-Za-z0-9\-_/]+)",
+            r"(?i)(?:Facture(?:\s*N[°o\.]?|\s*no|\s*num[eé]ro|N[°o\.]?)?|Invoice(?:\s*No|\s*number|No)?|رقم\s*الفاتورة)\s*[:#]?\s*([A-Za-z0-9\-_/]+)",
             l_text,
         )
         if inv_no_match and fields["invoice_number"]["value"] is None:
@@ -207,7 +207,7 @@ def extract_fields_from_ocr(ocr: OcrResult, doc_type: str = "purchase_invoice") 
             fields["client_name"]["bbox"] = line.bbox
 
         # Total HT
-        ht_match = re.search(r"(?i)\b(Total\s*HT|Montant\s*HT|Sous-total\s*HT|المجموع\s*دون\s*احتساب\s*الضريبة)\s*[:]?\s*([0-9\s,\.]+)", l_text)
+        ht_match = re.search(r"(?i)\b(Total\s*HT|TotalHT|Montant\s*HT|MontantHT|Sous-total\s*HT|المجموع\s*دون\s*احتساب\s*الضريبة)\s*[:]?\s*([0-9\s,\.]+)", l_text)
         if ht_match and fields["total_ht"]["value"] is None:
             amt = parse_decimal_amount(ht_match.group(2))
             if amt is not None:
@@ -216,7 +216,7 @@ def extract_fields_from_ocr(ocr: OcrResult, doc_type: str = "purchase_invoice") 
                 fields["total_ht"]["bbox"] = line.bbox
 
         # Total VAT (TVA)
-        vat_match = re.search(r"(?i)(?:Total\s*TVA|Montant\s*TVA|الضريبة\s*على\s*القيمة\s*المضافة)\s*[:]?\s*([0-9\s,\.]+)", l_text)
+        vat_match = re.search(r"(?i)(?:Total\s*TVA|TotalTVA|Montant\s*TVA|MontantTVA|الضريبة\s*على\s*القيمة\s*المضافة)\s*[:]?\s*([0-9\s,\.]+)", l_text)
         if vat_match and fields["total_vat"]["value"] is None:
             amt = parse_decimal_amount(vat_match.group(1))
             if amt is not None:
@@ -225,7 +225,7 @@ def extract_fields_from_ocr(ocr: OcrResult, doc_type: str = "purchase_invoice") 
                 fields["total_vat"]["bbox"] = line.bbox
 
         # Total TTC
-        ttc_match = re.search(r"(?i)(?:Total\s*TTC|Net\s*à\s*payer|Montant\s*TTC|المجموع\s*مع\s*احتساب\s*الضريبة)\s*[:]?\s*([0-9\s,\.]+)", l_text)
+        ttc_match = re.search(r"(?i)(?:Total\s*TTC|TotalTTC|Net\s*à\s*payer|Montant\s*TTC|MontantTTC|المجموع\s*مع\s*احتساب\s*الضريبة)\s*[:]?\s*([0-9\s,\.]+)", l_text)
         if ttc_match and fields["total_ttc"]["value"] is None:
             amt = parse_decimal_amount(ttc_match.group(1))
             if amt is not None:
@@ -309,7 +309,7 @@ def run_extractor(
 
     val_json = json.dumps(validation_report.to_dict()) if validation_report else "{}"
 
-    # Insert into extractions table (strictly append-only)
+    # Insert into extractions table
     with conn.cursor() as cur:
         cur.execute(
             """

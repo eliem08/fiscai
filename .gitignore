@@ -25,3 +25,9 @@ ENV/
 
 # Local storage
 storage_data/
+
+# Real labelled dataset (encrypted at rest, strictly excluded from git per CNDP / NDA)
+tests/fixtures/real/*
+!tests/fixtures/real/README.md
+!tests/fixtures/real/labels.schema.json
+!tests/fixtures/real/.gitkeep

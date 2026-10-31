@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RealDocumentGroundTruthLabel",
+  "description": "Schema for lines in tests/fixtures/real/labels.jsonl used in Part H evaluation.",
+  "type": "object",
+  "properties": {
+    "document_id": {
+      "type": "string",
+      "description": "Unique identifier for the document in the dataset"
+    },
+    "file_path": {
+      "type": "string",
+      "description": "Path to the document relative to the fixtures directory"
+    },
+    "mime_type": {
+      "type": "string",
+      "enum": [
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "image/tiff"
+      ]
+    },
+    "category": {
+      "type": "string",
+      "description": "Document classification category"
+    },
+    "ground_truth": {
+      "type": "object",
+      "properties": {
+        "doc_type": {
+          "type": "string",
+          "enum": ["purchase_invoice", "sale_invoice", "credit_note", "receipt", "bank_statement", "unsupported"]
+        },
+        "invoice_number": {
+          "type": ["string", "null"]
+        },
+        "invoice_date": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "supplier_name": {
+          "type": ["string", "null"]
+        },
+        "supplier_ice": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]{15}$"
+        },
+        "supplier_if": {
+          "type": ["string", "null"]
+        },
+        "supplier_rc": {
+          "type": ["string", "null"]
+        },
+        "client_name": {
+          "type": ["string", "null"]
+        },
+        "client_ice": {
+          "type": ["string", "null"]
+        },
+        "total_ht": {
+          "type": ["number", "null"]
+        },
+        "total_vat": {
+          "type": ["number", "null"]
+        },
+        "total_ttc": {
+          "type": ["number", "null"]
+        },
+        "payment_method": {
+          "type": ["string", "null"],
+          "enum": ["cash", "bank_transfer", "check", "bill_of_exchange", "unspecified", null]
+        },
+        "supplier_is_auto_entrepreneur": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "doc_type",
+        "invoice_number",
+        "invoice_date",
+        "supplier_ice",
+        "total_ht",
+        "total_vat",
+        "total_ttc"
+      ]
+    }
+  },
+  "required": [
+    "document_id",
+    "file_path",
+    "mime_type",
+    "category",
+    "ground_truth"
+  ]
+}

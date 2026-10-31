@@ -1,0 +1,8 @@
+- key: "social_charges.cnss.employee_rate"
+  value: 0.0448
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Dahir n° 1-72-184 / CNSS"
+  status: "out_of_scope"
+  note: "Cotisations sociales CNSS / AMO — Module Paie séparé (hors tenue comptable mensuelle factures/banque)"
+

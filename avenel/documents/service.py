@@ -63,6 +63,8 @@ class UploadInitResult:
     document_version_id: uuid.UUID
     object_key: str
     presigned_upload: dict[str, Any]
+    is_duplicate: bool = False
+    status: str = "received"
 
 
 def init_document_upload(
@@ -103,16 +105,47 @@ def init_document_upload(
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT document_id
-            FROM document_versions
-            WHERE tenant_id = %s AND client_entity_id = %s AND sha256 = %s;
+            SELECT dv.document_id, dv.id, dv.object_key, d.status
+            FROM document_versions dv
+            JOIN documents d ON d.id = dv.document_id AND d.tenant_id = dv.tenant_id
+            WHERE dv.tenant_id = %s AND dv.client_entity_id = %s AND dv.sha256 = %s;
             """,
             (tenant_id, client_entity_id, normalized_sha256),
         )
         dup_row = cur.fetchone()
         if dup_row:
-            raise DuplicateDocumentError(
-                f"Exact duplicate document detected (SHA-256: {normalized_sha256}) for this company"
+            existing_doc_id = uuid.UUID(str(dup_row[0]))
+            existing_ver_id = uuid.UUID(str(dup_row[1]))
+            existing_key = str(dup_row[2])
+            existing_status = str(dup_row[3])
+
+            # Record immutable audit event: document.resubmitted
+            actor_str = str(uploaded_by) if uploaded_by else "system"
+            cur.execute(
+                """
+                INSERT INTO audit_events (
+                    tenant_id, actor_type, actor_id, action, resource_type, resource_id, data
+                ) VALUES (%s, 'user', %s, 'document.resubmitted', 'document', %s, %s::jsonb);
+                """,
+                (
+                    tenant_id,
+                    actor_str,
+                    str(existing_doc_id),
+                    json.dumps({
+                        "document_id": str(existing_doc_id),
+                        "sha256": normalized_sha256,
+                        "work_request_id": str(work_request_id),
+                        "original_filename": original_filename,
+                    }),
+                ),
+            )
+            return UploadInitResult(
+                document_id=existing_doc_id,
+                document_version_id=existing_ver_id,
+                object_key=existing_key,
+                presigned_upload={},
+                is_duplicate=True,
+                status=existing_status,
             )
 
     # 4. Create document row

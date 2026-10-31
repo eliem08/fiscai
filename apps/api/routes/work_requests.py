@@ -7,7 +7,7 @@ import uuid
 from typing import Annotated, Any
 
 import psycopg
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from apps.api.deps import get_current_session, get_db
@@ -174,12 +174,13 @@ async def get_work_request(
     return _resolve_work_request_scope(conn, session, id)
 
 
-@router.post("/work-requests/{id}/uploads", status_code=status.HTTP_201_CREATED)
+@router.post("/work-requests/{id}/uploads")
 async def init_upload_for_work_request(
     id: uuid.UUID,
     body: UploadInitInput,
     session: Annotated[UserSession, Depends(get_current_session)],
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    response: Response,
 ) -> dict[str, Any]:
     # 1. Scope-first check: returns 404 if work request is out of scope
     _resolve_work_request_scope(conn, session, id)
@@ -201,11 +202,26 @@ async def init_upload_for_work_request(
             source_channel="portal" if session.role == "client_user" else "console",
         )
         conn.commit()
+
+        if res.is_duplicate:
+            response.status_code = status.HTTP_200_OK
+            return {
+                "document_id": str(res.document_id),
+                "document_version_id": str(res.document_version_id),
+                "object_key": res.object_key,
+                "presigned_upload": None,
+                "resubmitted": True,
+                "status": res.status,
+            }
+
+        response.status_code = status.HTTP_201_CREATED
         return {
             "document_id": str(res.document_id),
             "document_version_id": str(res.document_version_id),
             "object_key": res.object_key,
             "presigned_upload": res.presigned_upload,
+            "resubmitted": False,
+            "status": "received",
         }
     except DuplicateDocumentError as err:
         conn.rollback()
@@ -261,7 +277,7 @@ async def list_issues(
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, subject_document_id, code, severity, status, evidence_refs
+            SELECT id, document_id, code, severity, status, details
             FROM issues
             WHERE tenant_id = %s AND work_request_id = %s
             ORDER BY created_at DESC;
@@ -270,14 +286,12 @@ async def list_issues(
         )
         items = []
         for r in cur.fetchall():
-            refs = r[5] if isinstance(r[5], (list, dict)) else json.loads(r[5]) if r[5] else []
-            details_dict = refs[0] if isinstance(refs, list) and refs and isinstance(refs[0], dict) else (refs if isinstance(refs, dict) else {})
             items.append({
                 "id": str(r[0]),
                 "document_id": str(r[1]) if r[1] else None,
                 "code": r[2],
                 "severity": r[3],
                 "status": r[4],
-                "details": details_dict,
+                "details": r[5] if isinstance(r[5], dict) else json.loads(r[5]),
             })
         return {"items": items}

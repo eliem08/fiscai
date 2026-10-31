@@ -27,6 +27,9 @@ const DossierDetailPage = lazy(() =>
 const DocumentsPage = lazy(() =>
   import('@/pages/DocumentsPage').then((m) => ({ default: m.DocumentsPage })),
 );
+const DocumentReviewPage = lazy(() =>
+  import('@/pages/DocumentReviewPage').then((m) => ({ default: m.DocumentReviewPage })),
+);
 const AgentsPage = lazy(() =>
   import('@/pages/AgentsPage').then((m) => ({ default: m.AgentsPage })),
 );
@@ -70,6 +73,7 @@ export function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/viewer" element={<DocumentReviewPage />} />
             <Route
               path="/app"
               element={
@@ -84,6 +88,7 @@ export function App() {
               <Route path="dossiers/new" element={<NewDossierPage />} />
               <Route path="dossiers/:id" element={<DossierDetailPage />} />
               <Route path="documents" element={<DocumentsPage />} />
+              <Route path="documents/:id/review" element={<DocumentReviewPage />} />
               <Route path="agents" element={<AgentsPage />} />
               <Route path="alerts" element={<AlertsPage />} />
               <Route

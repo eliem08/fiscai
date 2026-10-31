@@ -6,8 +6,10 @@ under deterministic storage keys for the document viewer.
 
 from __future__ import annotations
 
-import re
+import io
 from dataclasses import dataclass
+
+from PIL import Image, ImageDraw
 
 from avenel.infrastructure.storage import get_storage
 
@@ -27,14 +29,20 @@ class RenderResult:
     pages: list[RenderedPage]
 
 
-def estimate_pdf_page_count(data: bytes) -> int:
-    """Fast, safe PDF page count estimation without external C libraries."""
-    # Search for /Type /Page objects, avoiding /Pages
-    pattern = re.compile(rb"/Type\s*/Page\b")
-    matches = pattern.findall(data)
-    if matches:
-        return max(1, len(matches))
-    return 1
+def _render_text_fallback_png(text: str, page_number: int, total_pages: int) -> bytes:
+    """Generates a real PNG bitmap for non-PDF or fallback text content."""
+    width, height = 800, 1131
+    img = Image.new("RGB", (width, height), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    draw.text((40, 40), f"Page {page_number}/{total_pages}", fill=(100, 100, 100))
+    y = 80
+    for line in text.splitlines():
+        if line.strip():
+            draw.text((40, y), line.strip(), fill=(20, 20, 20))
+            y += 35
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def render_document(
@@ -47,42 +55,62 @@ def render_document(
     storage = get_storage()
     pages: list[RenderedPage] = []
 
-    if mime_type == "application/pdf":
-        page_count = estimate_pdf_page_count(data)
-        # Store page representations
-        for p in range(1, page_count + 1):
-            key = f"pages/{tenant_id}/{document_id}/page_{p}.png"
-            # Use deterministic placeholder or extracted raster
-            placeholder_svg = (
-                f'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1131" viewBox="0 0 800 1131">'
-                f'<rect width="100%" height="100%" fill="#ffffff"/>'
-                f'<text x="50" y="80" font-family="sans-serif" font-size="20" fill="#333333">'
-                f'Document Page {p} of {page_count}</text>'
-                f'</svg>'
-            ).encode()
-            storage.put_object(key, placeholder_svg, "image/svg+xml")
+    if mime_type == "application/pdf" and data.startswith(b"%PDF-"):
+        try:
+            import fitz  # type: ignore[import-untyped]
+
+            doc = fitz.open(stream=data, filetype="pdf")
+            page_count = len(doc)
+            for p, page in enumerate(doc, start=1):
+                pix = page.get_pixmap(dpi=150)
+                png_bytes = pix.tobytes("png")
+                key = f"pages/{tenant_id}/{document_id}/page_{p}.png"
+                storage.put_object(key, png_bytes, "image/png")
+                pages.append(
+                    RenderedPage(
+                        page_number=p,
+                        width=pix.width,
+                        height=pix.height,
+                        image_key=key,
+                        media_type="image/png",
+                    )
+                )
+            doc.close()
+            return RenderResult(page_count=page_count, pages=pages)
+        except (ImportError, OSError, ValueError, RuntimeError):
+            pass
+
+    if mime_type.startswith("image/"):
+        try:
+            img = Image.open(io.BytesIO(data))
+            width, height = img.size
+            key = f"pages/{tenant_id}/{document_id}/page_1.png"
+            storage.put_object(key, data, mime_type)
             pages.append(
                 RenderedPage(
-                    page_number=p,
-                    width=800,
-                    height=1131,
+                    page_number=1,
+                    width=width,
+                    height=height,
                     image_key=key,
-                    media_type="image/svg+xml",
+                    media_type=mime_type,
                 )
             )
-    else:
-        # Standard 1-page image
-        page_count = 1
-        key = f"pages/{tenant_id}/{document_id}/page_1.png"
-        storage.put_object(key, data, mime_type)
-        pages.append(
-            RenderedPage(
-                page_number=1,
-                width=800,
-                height=1131,
-                image_key=key,
-                media_type=mime_type,
-            )
-        )
+            return RenderResult(page_count=1, pages=pages)
+        except (OSError, ValueError):
+            pass
 
-    return RenderResult(page_count=page_count, pages=pages)
+    # Fallback: render text to PNG
+    raw_text = data.decode("utf-8", errors="ignore")
+    png_bytes = _render_text_fallback_png(raw_text, page_number=1, total_pages=1)
+    key = f"pages/{tenant_id}/{document_id}/page_1.png"
+    storage.put_object(key, png_bytes, "image/png")
+    pages.append(
+        RenderedPage(
+            page_number=1,
+            width=800,
+            height=1131,
+            image_key=key,
+            media_type="image/png",
+        )
+    )
+    return RenderResult(page_count=1, pages=pages)

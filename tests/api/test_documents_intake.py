@@ -125,8 +125,8 @@ Total TTC: 1200.00 MAD
     assert "image_url" in page_res.json()
 
 
-def test_exact_duplicate_document_rejected(db_conn: psycopg.Connection):
-    """Uploading an exact duplicate SHA-256 for the same client entity returns 409 Conflict."""
+def test_exact_duplicate_document_resubmitted_returns_200(db_conn: psycopg.Connection):
+    """Exact duplicate upload returns 200 with existing doc ID and logs document.resubmitted."""
     client = TestClient(app)
     tenant_id = seed_tenant(db_conn, "Cabinet Test Duplicate")
     sub = f"accountant-{uuid.uuid4()}"
@@ -151,7 +151,7 @@ def test_exact_duplicate_document_rejected(db_conn: psycopg.Connection):
     sha256 = hashlib.sha256(dummy_content).hexdigest()
 
     headers = _auth_headers(sub, tenant_id)
-    # First upload
+    # First upload -> 201 Created
     res1 = client.post(
         f"/v1/work-requests/{wr_id}/uploads",
         headers=headers,
@@ -163,8 +163,9 @@ def test_exact_duplicate_document_rejected(db_conn: psycopg.Connection):
         },
     )
     assert res1.status_code == 201
+    orig_doc_id = res1.json()["document_id"]
 
-    # Second upload with same SHA-256
+    # Second upload with same SHA-256 -> 200 OK with existing ID and document.resubmitted audit
     headers["Idempotency-Key"] = f"idemp-{uuid.uuid4()}"
     res2 = client.post(
         f"/v1/work-requests/{wr_id}/uploads",
@@ -176,8 +177,26 @@ def test_exact_duplicate_document_rejected(db_conn: psycopg.Connection):
             "sha256": sha256,
         },
     )
-    assert res2.status_code == 409
-    assert "Exact duplicate document detected" in res2.text
+    assert res2.status_code == 200
+    res2_data = res2.json()
+    assert res2_data["document_id"] == orig_doc_id
+    assert res2_data["resubmitted"] is True
+
+    # Verify audit event document.resubmitted logged in audit chain
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT action, resource_id, data
+            FROM audit_events
+            WHERE tenant_id = %s AND action = 'document.resubmitted';
+            """,
+            (tenant_id,),
+        )
+        audit_row = cur.fetchone()
+        assert audit_row is not None
+        assert audit_row[0] == "document.resubmitted"
+        assert audit_row[1] == orig_doc_id
+        assert audit_row[2]["sha256"] == sha256
 
 
 def test_malware_quarantined_with_immutable_evidence(db_conn: psycopg.Connection):
