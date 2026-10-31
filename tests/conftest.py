@@ -103,7 +103,7 @@ def app_conn(postgres_url: str) -> Generator[psycopg.Connection, None, None]:
     # Parse url to connect as avenel_app
     info = psycopg.conninfo.conninfo_to_dict(postgres_url)
     info["user"] = "avenel_app"
-    info.pop("password", None)
+    info["password"] = os.environ.get("AVENEL_APP_PASSWORD", "avenel_app_secret")
     app_url = psycopg.conninfo.make_conninfo(**info)
     with psycopg.connect(app_url, autocommit=False) as conn:
         yield conn
