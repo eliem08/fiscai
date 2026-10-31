@@ -51,13 +51,13 @@ test.describe('DocumentViewer & Field Correction Flow (Phase 2 UI)', () => {
     await expect(page.getByTestId('bbox-label')).toContainText('ICE Fournisseur');
 
     // Verify 160ms transition style
-    const transitionStyle = await bboxOverlay.evaluate((el: any) => {
-      return (globalThis as any).getComputedStyle(el).transition || el.style.transition;
+    const transitionStyle = await bboxOverlay.evaluate((el: HTMLElement) => {
+      return window.getComputedStyle(el).transition || el.style.transition;
     });
     expect(transitionStyle).toMatch(/160ms|0\.16s/);
 
     // Verify normalized [x0, y0, x1, y1] coordinates (supplier_ice is [0.05, 0.08, 0.35, 0.11])
-    const bboxBox = await bboxOverlay.evaluate((el: any) => {
+    const bboxBox = await bboxOverlay.evaluate((el: HTMLElement) => {
       return { left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height };
     });
     expect(bboxBox.left).toBe('5%');
@@ -70,7 +70,7 @@ test.describe('DocumentViewer & Field Correction Flow (Phase 2 UI)', () => {
     await invInput.focus();
     await expect(page.getByTestId('bbox-label')).toContainText('Numéro de facture');
 
-    const invBbox = await bboxOverlay.evaluate((el: any) => {
+    const invBbox = await bboxOverlay.evaluate((el: HTMLElement) => {
       return { left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height };
     });
     expect(invBbox.left).toBe('5%');

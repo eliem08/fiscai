@@ -136,8 +136,9 @@ export function DocumentViewer({
       }
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 3000);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Erreur lors de l’enregistrement de la correction');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de l’enregistrement de la correction';
+      setErrorMessage(msg);
       setSaveStatus('idle');
     }
   };

@@ -78,4 +78,59 @@ Conformément à la règle Phase 2 révisée :
   - `x1` : bord droit normalisé ($x_0 \le x_1 \le 1.0$)
   - `y1` : bord inférieur normalisé ($y_0 \le y_1 \le 1.0$)
 
+---
 
+## 6. Résolution des Comptes de Taxe et Nomenclature des Règles TVA
+
+### A. Résolution stricte par `client_tax_mappings`
+- Les comptes de TVA ne sont jamais imputés directement par défaut sans approbation.
+- Chaque imputation de TVA doit obligatoirement être résolue par la table `client_tax_mappings` pour l'entreprise cliente (`tenant_id`, `client_entity_id`, `tax_code`, `direction`) avec la condition impérative `approved_by IS NOT NULL`.
+- Si aucun mapping approuvé n'existe pour un code de taxe et une direction donnés :
+  - **Aucune ligne d'écriture n'est générée.**
+  - Une anomalie bloquante de sévérité `blocking` est levée : **`ACCOUNT_UNMAPPED`**.
+- Le pack fiscal peut fournir des suggestions de comptes par défaut dans l'interface utilisateur pour assister l'expert comptable (`get_suggested_tax_account_default`), mais celles-ci ne sont jamais appliquées automatiquement en base sans validation explicite.
+
+### B. Correspondance des fichiers de règles TVA (`vat_rules.yaml`)
+- Certaines références conceptuelles mentionnent `vat_rules.yaml`. Dans la structure effective du pack `/jurisdiction/ma/`, ces règles sont structurées en deux fichiers conformément à `ARCHITECTURE.md` :
+  - `vat_rates.yaml` : Taux légaux (normal 20%, réduit 10%, historique 7%/14%) et calendrier de transition LF 2024–2026.
+  - `vat_deduction.yaml` : Conditions d'exercice du droit à déduction, exclusions par nature (CGI art. 106-I), plafonds de règlement en espèces (CGI art. 106-II : 5 000 MAD/jour/fournisseur) et prorata de déduction (CGI art. 104).
+
+---
+
+## 7. Traçabilité des Références de Preuve (`evidence_refs` vs `rule_refs`)
+
+Pour garantir une séparation stricte entre les pièces justificatives et les fondements réglementaires :
+- **`journal_lines.evidence_refs`** : Doit contenir **exclusivement** des références à des régions de documents physiques (`document_version_id` ou `document_id`, `page`, `bbox`) ou des lignes de relevé bancaire (`bank_statement_line_id` ou `bank_transaction_id`).
+  - Toute ligne d'écriture ne contenant que des références de règles sans repère physique est formellement **rejetée**.
+- **`journal_proposals.rule_refs`** : Les fondements réglementaires et légaux (ex. `vat.rate.standard`, `cgnc.seed.accounts`, `vat.deduction.cash_limit.daily`, `vat.deduction.prorata`) sont stockés au niveau de l'entête de la proposition d'écriture dans le tableau typé `rule_refs text[]`.
+
+---
+
+## 8. Conversion de Devises et Gestion des Écarts d'Arrondi (Centimes)
+
+- Les taux de conversion de devises sont stockés au niveau du tenant dans la table `fx_rates` (migration 004) avec `rate_date`, `currency`, `rate`, `source` (ex. fixing Bank Al-Maghrib).
+- Tout document en devise étrangère dont le taux n'est pas saisi ou importé lève immédiatement l'anomalie bloquante **`FX_RATE_MISSING`** (aucun appel réseau en test ou production).
+- Lors de la conversion en dirhams marocains (MAD) :
+  - La ligne du tiers (fournisseur ou client) est **strictement égale au montant TTC de la facture converti au taux officiel**.
+  - Tout écart résiduel arithmétique de centimes résultant des arrondis ligne par ligne est imputé sur une **ligne explicite d'arrondi**, jamais imputé sur le compte de tiers.
+  - Le compte d'arrondi est résolu via `client_tax_mappings` (direction `'rounding'`) ou à défaut sur le compte CGNC par défaut du pack marqué `status: needs_expert` (`6588`).
+
+---
+
+## 9. Détection des Doublons Probables (`DUPLICATE_PROBABLE`)
+
+- La règle de détection des doublons probables exige :
+  $$\text{Même tiers} \land (\text{Même numéro de facture} \lor (\text{Même montant TTC} \land |\Delta_{\text{dates}}| \le \text{fenêtre du pack}))$$
+- La fenêtre temporelle est lue dynamiquement depuis le pack : `invoice.duplicate_window_days` (20 jours).
+- Code d'anomalie : **`DUPLICATE_PROBABLE`** (sévérité `review`).
+- Deux fournisseurs différents ayant le même montant ne sont jamais signalés en doublon.
+- Une facture récurrente (ex. loyer mensuel) avec des numéros différents espacés de 30 jours n'est pas signalée en doublon (dépassement de la fenêtre de 20 jours).
+
+---
+
+## 10. Approbation Exclusive au Niveau du Dossier Mensuel (Phase 5)
+
+- Il n'existe **aucun point d'accès d'approbation unitaire par écriture** (`POST /v1/proposals/{id}:approve` est supprimé).
+- L'approbation comptable intervient exclusivement au niveau global du dossier mensuel de révision (*Monthly File Review*, Phase 5 per Part G).
+- Dans l'interface utilisateur de révision des propositions (`ProposalReview`), la touche `Entrée` permet uniquement de **confirmer la ligne focalisée** (toast : *« Ligne confirmée »*). Aucun chemin clavier ne permet de valider ou approuver une écriture.
+- Les vérifications de rôles sont renommées pour cibler la permission **`edit_proposals`** (`owner`, `manager`, `accountant`).

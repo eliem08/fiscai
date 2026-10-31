@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from apps.api.main import app
 from avenel.clients.service import create_client_entity
 from avenel.periods.service import open_accounting_period
+from avenel.proposals.tax_mapping import seed_approved_client_tax_mappings
 from avenel.tenancy.auth import grant_operator_access, set_rls_context
 from tests.helpers import (
     seed_membership,
@@ -57,6 +58,9 @@ def proposal_api_env(db_conn: psycopg.Connection):
 
     set_rls_context(db_conn, tenant_id, acc_user_id)
     client_entity = create_client_entity(db_conn, tenant_id, "Société Alpha SARL", actor_id=str(acc_user_id))
+
+    # Seed approved tax mappings so proposals can resolve VAT accounts
+    seed_approved_client_tax_mappings(db_conn, tenant_id, client_entity.id, approver_id=acc_user_id)
 
     period = open_accounting_period(
         db_conn,
@@ -145,14 +149,14 @@ def test_proposal_generate_retrieve_and_list(db_conn: psycopg.Connection, propos
     sub_acc = proposal_api_env["sub_acc"]
 
     fields = {
-        "invoice_number": {"value": "FA-2026-001"},
-        "invoice_date": {"value": "2026-03-15"},
-        "supplier_name": {"value": "Papeterie Marocaine"},
-        "supplier_ice": {"value": "001234567890123"},
-        "total_ht": {"value": 1000.0},
+        "invoice_number": {"value": "FA-2026-001", "page": 1, "bbox": [0.1, 0.1, 0.4, 0.15]},
+        "invoice_date": {"value": "2026-03-15", "page": 1, "bbox": [0.1, 0.2, 0.4, 0.25]},
+        "supplier_name": {"value": "Papeterie Marocaine", "page": 1},
+        "supplier_ice": {"value": "001234567890123", "page": 1},
+        "total_ht": {"value": 1000.0, "page": 1, "bbox": [0.6, 0.7, 0.9, 0.75]},
         "tax_lines": [{"rate": 0.20, "base_ht": 1000.0, "amount_tva": 200.0}],
-        "total_tva": {"value": 200.0},
-        "total_ttc": {"value": 1200.0},
+        "total_tva": {"value": 200.0, "page": 1, "bbox": [0.6, 0.76, 0.9, 0.8]},
+        "total_ttc": {"value": 1200.0, "page": 1, "bbox": [0.6, 0.81, 0.9, 0.85]},
         "currency": {"value": "MAD"},
     }
 
@@ -196,7 +200,8 @@ def test_proposal_generate_retrieve_and_list(db_conn: psycopg.Connection, propos
     assert any(p["id"] == prop_id for p in props)
 
 
-def test_proposal_revision_and_approval_flow(db_conn: psycopg.Connection, proposal_api_env: dict):
+def test_proposal_revision_flow_and_no_per_entry_approval(db_conn: psycopg.Connection, proposal_api_env: dict):
+    """Verifies proposal revisioning and confirms no per-entry approval endpoint exists."""
     client = TestClient(app)
     tenant_id = proposal_api_env["tenant_id"]
     client_id = proposal_api_env["client_id"]
@@ -204,14 +209,14 @@ def test_proposal_revision_and_approval_flow(db_conn: psycopg.Connection, propos
     sub_acc = proposal_api_env["sub_acc"]
 
     fields = {
-        "invoice_number": {"value": "FA-REV-01"},
-        "invoice_date": {"value": "2026-03-20"},
-        "supplier_name": {"value": "Service Informatique"},
-        "supplier_ice": {"value": "009876543210123"},
-        "total_ht": {"value": 5000.0},
+        "invoice_number": {"value": "FA-REV-01", "page": 1, "bbox": [0.1, 0.1, 0.4, 0.15]},
+        "invoice_date": {"value": "2026-03-20", "page": 1, "bbox": [0.1, 0.2, 0.4, 0.25]},
+        "supplier_name": {"value": "Service Informatique", "page": 1},
+        "supplier_ice": {"value": "009876543210123", "page": 1},
+        "total_ht": {"value": 5000.0, "page": 1, "bbox": [0.6, 0.7, 0.9, 0.75]},
         "tax_lines": [{"rate": 0.20, "base_ht": 5000.0, "amount_tva": 1000.0}],
-        "total_tva": {"value": 1000.0},
-        "total_ttc": {"value": 6000.0},
+        "total_tva": {"value": 1000.0, "page": 1, "bbox": [0.6, 0.76, 0.9, 0.8]},
+        "total_ttc": {"value": 6000.0, "page": 1, "bbox": [0.6, 0.81, 0.9, 0.85]},
         "currency": {"value": "MAD"},
     }
 
@@ -249,24 +254,16 @@ def test_proposal_revision_and_approval_flow(db_conn: psycopg.Connection, propos
     assert orig_resp.status_code == 200
     assert orig_resp.json()["status"] == "superseded"
 
-    # 3. Approve rev2
+    # 3. Confirm NO per-entry approval endpoint exists (returns 404/405)
     app_resp = client.post(
         f"/v1/proposals/{rev2_id}:approve",
         headers=_auth_headers(sub_acc, tenant_id),
     )
-    assert app_resp.status_code == 200, app_resp.text
-    assert app_resp.json()["status"] == "approved"
-
-    # 4. Attempting to edit an approved proposal must fail with 409 (immutable)
-    edit_approved_resp = client.put(
-        f"/v1/proposals/{rev2_id}",
-        json={"lines": lines},
-        headers=_auth_headers(sub_acc, tenant_id),
-    )
-    assert edit_approved_resp.status_code == 409
+    assert app_resp.status_code in (404, 405), "Per-entry approval endpoint must not exist (approval is monthly-file level)"
 
 
 def test_proposal_role_based_access(db_conn: psycopg.Connection, proposal_api_env: dict):
+    """Verifies RBAC: staff cannot edit proposals (403), accountant can edit proposals (200)."""
     client = TestClient(app)
     tenant_id = proposal_api_env["tenant_id"]
     client_id = proposal_api_env["client_id"]
@@ -276,14 +273,14 @@ def test_proposal_role_based_access(db_conn: psycopg.Connection, proposal_api_en
     sub_op = proposal_api_env["sub_op"]
 
     fields = {
-        "invoice_number": {"value": "FA-ROLE-01"},
-        "invoice_date": {"value": "2026-03-22"},
-        "supplier_name": {"value": "Fournisseur Test"},
-        "supplier_ice": {"value": "001122334455667"},
-        "total_ht": {"value": 100.0},
+        "invoice_number": {"value": "FA-ROLE-01", "page": 1, "bbox": [0.1, 0.1, 0.4, 0.15]},
+        "invoice_date": {"value": "2026-03-22", "page": 1, "bbox": [0.1, 0.2, 0.4, 0.25]},
+        "supplier_name": {"value": "Fournisseur Test", "page": 1},
+        "supplier_ice": {"value": "001122334455667", "page": 1},
+        "total_ht": {"value": 100.0, "page": 1, "bbox": [0.6, 0.7, 0.9, 0.75]},
         "tax_lines": [{"rate": 0.20, "base_ht": 100.0, "amount_tva": 20.0}],
-        "total_tva": {"value": 20.0},
-        "total_ttc": {"value": 120.0},
+        "total_tva": {"value": 20.0, "page": 1, "bbox": [0.6, 0.76, 0.9, 0.8]},
+        "total_ttc": {"value": 120.0, "page": 1, "bbox": [0.6, 0.81, 0.9, 0.85]},
         "currency": {"value": "MAD"},
     }
 
@@ -296,7 +293,7 @@ def test_proposal_role_based_access(db_conn: psycopg.Connection, proposal_api_en
     )
     assert op_gen_resp.status_code == 403
 
-    # 2. Staff can generate proposal
+    # 2. Staff can generate proposal (200)
     staff_gen_resp = client.post(
         f"/v1/documents/{doc_id}:generate-proposal",
         headers=_auth_headers(sub_staff, tenant_id),
@@ -304,17 +301,21 @@ def test_proposal_role_based_access(db_conn: psycopg.Connection, proposal_api_en
     assert staff_gen_resp.status_code == 200
     prop = staff_gen_resp.json()
     prop_id = prop["id"]
+    lines = prop["lines"]
 
-    # 3. Staff cannot approve proposal (403 - requires accountant / manager)
-    staff_app_resp = client.post(
-        f"/v1/proposals/{prop_id}:approve",
+    # 3. Staff CANNOT edit proposals (403 - requires accountant / manager / owner)
+    staff_edit_resp = client.put(
+        f"/v1/proposals/{prop_id}",
+        json={"lines": lines},
         headers=_auth_headers(sub_staff, tenant_id),
     )
-    assert staff_app_resp.status_code == 403
+    assert staff_edit_resp.status_code == 403
 
-    # 4. Accountant can approve
-    acc_app_resp = client.post(
-        f"/v1/proposals/{prop_id}:approve",
+    # 4. Accountant CAN edit proposals (200)
+    lines[0]["label"] = "Charges modifiées par comptable"
+    acc_edit_resp = client.put(
+        f"/v1/proposals/{prop_id}",
+        json={"lines": lines},
         headers=_auth_headers(sub_acc, tenant_id),
     )
-    assert acc_app_resp.status_code == 200
+    assert acc_edit_resp.status_code == 200

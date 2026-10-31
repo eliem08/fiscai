@@ -21,3 +21,25 @@
   source: "CGI art. 106-II"
   status: "needs_expert"
   note: "Basis of cash payment limit (HT vs TTC) needs confirmation; conservative TTC applied (Part I #1)"
+
+- key: "vat.deduction.exclusions_by_nature"
+  value:
+    - "passenger_vehicles"
+    - "gifts"
+    - "receptions"
+    - "mission_reception"
+    - "vehicule_tourisme"
+    - "cadeaux"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 106-I"
+  status: "verified"
+  note: "Exclusions du droit à déduction de la TVA par nature de dépense (CGI art. 106-I)"
+
+- key: "vat.deduction.prorata"
+  value: true
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 104"
+  status: "verified"
+  note: "Application du prorata général de déduction de la TVA selon CGI art. 104"

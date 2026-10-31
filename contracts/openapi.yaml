@@ -786,33 +786,6 @@ paths:
         "422":
           $ref: "#/components/responses/ProblemDetails"
 
-  /proposals/{id}:approve:
-    post:
-      operationId: approveProposal
-      tags:
-        - Proposals
-      summary: Approve accounting proposal
-      description: Freezes the proposal lines and marks it approved with an immutable audit trail.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - $ref: "#/components/parameters/IdempotencyKeyHeader"
-      responses:
-        "200":
-          description: Approved proposal
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProposalDetail"
-        "404":
-          $ref: "#/components/responses/ProblemDetails"
-        "422":
-          $ref: "#/components/responses/ProblemDetails"
-
 components:
   parameters:
     IdempotencyKeyHeader:

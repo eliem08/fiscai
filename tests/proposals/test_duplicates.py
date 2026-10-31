@@ -1,6 +1,14 @@
 """Tests for probable duplicate detection per ARCHITECTURE.md Part G & Part H.
 
 Gate: Probable duplicate recall >= 99% on fixtures.
+Enforces:
+- Same counterparty AND (same invoice number OR (same TTC AND |date delta| <= window from pack)).
+- Window lives in the pack (`invoice.duplicate_window_days`).
+- Issue code `DUPLICATE_PROBABLE` from issues.yaml.
+- Negative tests:
+  1. Monthly rent: same amount same supplier different invoice numbers 30 days apart is NOT flagged
+     when numbers differ and dates are a month apart beyond the window.
+  2. Two different suppliers same amount never flagged.
 """
 
 from __future__ import annotations
@@ -17,6 +25,7 @@ from avenel.periods.service import open_accounting_period
 from avenel.proposals.duplicates import (
     ProbableDuplicateMatch,
     detect_probable_duplicates,
+    get_duplicate_window_days,
     record_duplicate_issues_if_any,
 )
 from avenel.tenancy.auth import set_rls_context
@@ -114,6 +123,12 @@ def _seed_document_with_extraction(
     return doc_id
 
 
+def test_duplicate_window_reads_from_pack():
+    """Window lives in the pack (invoice.duplicate_window_days)."""
+    window = get_duplicate_window_days()
+    assert window == 20
+
+
 def test_probable_duplicate_detected_by_exact_invoice_number(db_conn: psycopg.Connection, duplicate_test_env: dict):
     """Detects probable duplicate when invoice number matches from the same supplier."""
     tenant_id = duplicate_test_env["tenant_id"]
@@ -152,7 +167,7 @@ def test_probable_duplicate_detected_by_exact_invoice_number(db_conn: psycopg.Co
 
 
 def test_probable_duplicate_detected_by_amount_and_date_window(db_conn: psycopg.Connection, duplicate_test_env: dict):
-    """Detects probable duplicate when amount matches within +/- 30 days even if invoice number is slightly altered."""
+    """Detects probable duplicate when amount matches within pack window (<= 20 days) for same supplier."""
     tenant_id = duplicate_test_env["tenant_id"]
     client_id = duplicate_test_env["client_id"]
     wr_id = duplicate_test_env["work_request_id"]
@@ -179,7 +194,7 @@ def test_probable_duplicate_detected_by_amount_and_date_window(db_conn: psycopg.
         supplier_name="Fournitures Maroc",
         invoice_number="DIFFERENT-NO",  # Number differs
         total_ttc=4250.75,             # Exactly matches amount
-        invoice_date="2026-03-22",      # 12 days apart (< 30 days window)
+        invoice_date="2026-03-22",      # 12 days apart (<= 20 days window)
     )
 
     assert len(matches) == 1
@@ -188,8 +203,11 @@ def test_probable_duplicate_detected_by_amount_and_date_window(db_conn: psycopg.
     assert matches[0].confidence >= 0.90
 
 
-def test_no_duplicate_when_outside_date_window(db_conn: psycopg.Connection, duplicate_test_env: dict):
-    """Different invoice number and date > 30 days apart does NOT trigger duplicate match."""
+def test_negative_monthly_rent_30_days_apart_not_flagged(db_conn: psycopg.Connection, duplicate_test_env: dict):
+    """Negative test: monthly rent same amount same supplier different invoice numbers 30 days apart
+
+    is NOT flagged when numbers differ and dates are a month apart beyond the window.
+    """
     tenant_id = duplicate_test_env["tenant_id"]
     client_id = duplicate_test_env["client_id"]
     wr_id = duplicate_test_env["work_request_id"]
@@ -198,32 +216,68 @@ def test_no_duplicate_when_outside_date_window(db_conn: psycopg.Connection, dupl
         conn=db_conn,
         tenant_id=tenant_id,
         client_id=client_id,
-        supplier_ice="001234567890123",
-        supplier_name="Fournitures Maroc",
-        invoice_number="FA-OLD",
-        total_ttc=4250.75,
-        invoice_date="2026-01-01",  # 70 days earlier
+        supplier_ice="002345678901234",
+        supplier_name="Bailleur Immobilier SARL",
+        invoice_number="LOYER-JAN-2026",
+        total_ttc=15000.00,
+        invoice_date="2026-01-05",
         work_request_id=wr_id,
     )
 
     new_doc_id = uuid.uuid4()
+    # February rent: 30 days later, different invoice number
     matches = detect_probable_duplicates(
         conn=db_conn,
         tenant_id=tenant_id,
         client_entity_id=client_id,
         current_document_id=new_doc_id,
-        supplier_ice="001234567890123",
-        supplier_name="Fournitures Maroc",
-        invoice_number="FA-NEW",
-        total_ttc=4250.75,
+        supplier_ice="002345678901234",
+        supplier_name="Bailleur Immobilier SARL",
+        invoice_number="LOYER-FEV-2026",
+        total_ttc=15000.00,
+        invoice_date="2026-02-05",  # 31 days apart (> 20 days window from pack)
+    )
+
+    assert len(matches) == 0, "Monthly recurring invoices 30 days apart must NOT be flagged as duplicates"
+
+
+def test_negative_two_different_suppliers_same_amount_never_flagged(db_conn: psycopg.Connection, duplicate_test_env: dict):
+    """Negative test: two different suppliers same amount never flagged."""
+    tenant_id = duplicate_test_env["tenant_id"]
+    client_id = duplicate_test_env["client_id"]
+    wr_id = duplicate_test_env["work_request_id"]
+
+    _seed_document_with_extraction(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        client_id=client_id,
+        supplier_ice="001111111111111",
+        supplier_name="Fournisseur Alpha",
+        invoice_number="FAC-001",
+        total_ttc=7500.00,
+        invoice_date="2026-03-15",
+        work_request_id=wr_id,
+    )
+
+    new_doc_id = uuid.uuid4()
+    # Same amount (7500.00 MAD) on the same date, but completely different supplier
+    matches = detect_probable_duplicates(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        client_entity_id=client_id,
+        current_document_id=new_doc_id,
+        supplier_ice="002222222222222",
+        supplier_name="Fournisseur Beta",
+        invoice_number="FAC-001",
+        total_ttc=7500.00,
         invoice_date="2026-03-15",
     )
 
-    assert len(matches) == 0
+    assert len(matches) == 0, "Invoices from different suppliers must NEVER be flagged as duplicates"
 
 
-def test_record_duplicate_issues_inserts_review_issue(db_conn: psycopg.Connection, duplicate_test_env: dict):
-    """Confirms record_duplicate_issues_if_any inserts issue row with PROBABLE_DUPLICATE_INVOICE."""
+def test_record_duplicate_issues_inserts_duplicate_probable(db_conn: psycopg.Connection, duplicate_test_env: dict):
+    """Confirms record_duplicate_issues_if_any inserts issue row with DUPLICATE_PROBABLE from issues.yaml."""
     tenant_id = duplicate_test_env["tenant_id"]
     client_id = duplicate_test_env["client_id"]
     wr_id = duplicate_test_env["work_request_id"]
@@ -275,7 +329,7 @@ def test_record_duplicate_issues_inserts_review_issue(db_conn: psycopg.Connectio
         )
         row = cur.fetchone()
         assert row is not None
-        assert row[0] == "PROBABLE_DUPLICATE_INVOICE"
+        assert row[0] == "DUPLICATE_PROBABLE", "Issue code must be DUPLICATE_PROBABLE per issues.yaml"
         assert row[1] == "review"
         assert row[2] == "open"
         assert str(conflicting_id) in json.dumps(row[3])

@@ -14,7 +14,6 @@ from avenel.proposals.service import (
     ProposalImmutableError,
     ProposalNotFoundError,
     ProposalUnbalancedError,
-    approve_proposal,
     create_proposal_revision,
     generate_and_save_proposal_for_document,
     get_proposal_by_id,
@@ -174,8 +173,11 @@ async def update_proposal_endpoint(
     """Edits a proposal, creating a new revision and superseding the previous one."""
     _resolve_proposal_scope(conn, session, id)
 
-    if session.role in ("operator", "client_user"):
-        raise HTTPException(status_code=403, detail="Votre rôle ne permet pas de modifier des écritures comptables.")
+    if session.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(
+            status_code=403,
+            detail="Votre rôle ne permet pas de modifier des écritures comptables (droit 'edit_proposals' requis).",
+        )
 
     try:
         lines_data = [l.model_dump() for l in payload.lines]
@@ -199,27 +201,3 @@ async def update_proposal_endpoint(
         raise HTTPException(status_code=422, detail=str(err)) from err
 
 
-@router.post("/proposals/{id}:approve")
-async def approve_proposal_endpoint(
-    id: uuid.UUID,
-    session: Annotated[UserSession, Depends(get_current_session)],
-    conn: Annotated[psycopg.Connection, Depends(get_db)],
-) -> dict[str, Any]:
-    """Approves a proposal, making it immutable."""
-    _resolve_proposal_scope(conn, session, id)
-
-    if session.role in ("operator", "client_user", "staff"):
-        raise HTTPException(status_code=403, detail="Seuls les comptables et responsables peuvent valider les écritures.")
-
-    try:
-        approved = approve_proposal(
-            conn=conn,
-            tenant_id=session.tenant_id,
-            proposal_id=id,
-            actor_id=str(session.user_id),
-        )
-        conn.commit()
-        return approved
-    except Exception as err:
-        conn.rollback()
-        raise HTTPException(status_code=422, detail=str(err)) from err

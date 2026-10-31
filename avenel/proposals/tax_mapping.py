@@ -3,6 +3,8 @@
 Enforces:
 - Rule A.1: All VAT rates and deduction rules are loaded from /jurisdiction/ma/*.yaml.
 - Rule A.2: No numeric literals for tax rates or thresholds outside /jurisdiction/.
+- Phase 3 Item 2: Tax accounts must resolve through client_tax_mappings (approved_by required).
+  If no approved mapping exists, returns None and caller raises ACCOUNT_UNMAPPED (blocking).
 """
 
 from __future__ import annotations
@@ -12,7 +14,6 @@ from dataclasses import dataclass
 
 import psycopg
 
-from avenel.accounting.service import seed_cgnc_chart
 from avenel.jurisdiction.loader import get_jurisdiction_pack
 
 
@@ -31,7 +32,7 @@ class ResolvedTaxAccount:
     account_code: str
     label: str
     tax_code: str
-    direction: str  # 'input' (dductible) or 'output' (collecte)
+    direction: str  # 'purchase', 'sale', 'fixed_asset', 'rounding'
     rate_value: float
     rule_refs: list[str]
 
@@ -84,10 +85,12 @@ def resolve_tax_account(
     tax_code: str,
     direction: str,  # 'purchase', 'sale', 'fixed_asset'
     is_asset: bool = False,
-    actor_id: str | None = None,
-) -> ResolvedTaxAccount:
-    """Resolves the appropriate CGNC VAT account (34552, 34551, 4455, or client override)."""
-    # Normalize direction to match DB check constraint: ('purchase','sale','fixed_asset','withholding')
+) -> ResolvedTaxAccount | None:
+    """Resolves the appropriate CGNC VAT account strictly from client_tax_mappings.
+
+    Requires approved_by IS NOT NULL.
+    If no approved mapping exists, returns None (raising ACCOUNT_UNMAPPED blocking issue).
+    """
     if is_asset or direction == "fixed_asset":
         db_direction = "fixed_asset"
     elif direction in ("input", "purchase"):
@@ -97,7 +100,6 @@ def resolve_tax_account(
     else:
         db_direction = direction
 
-    # 1. Check for client-specific override in client_tax_mappings
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -108,38 +110,77 @@ def resolve_tax_account(
               AND m.client_entity_id = %s
               AND m.tax_code = %s
               AND m.direction = %s
+              AND m.approved_by IS NOT NULL
             LIMIT 1;
             """,
             (tenant_id, client_entity_id, tax_code, db_direction),
         )
         row = cur.fetchone()
-        if row:
-            rate_info = next((r for r in get_available_vat_rates() if r.code == tax_code), None)
-            rate_val = rate_info.rate_value if rate_info else 0.0
-            return ResolvedTaxAccount(
-                account_id=uuid.UUID(str(row[0])),
-                account_code=str(row[1]),
-                label=str(row[2]),
-                tax_code=tax_code,
-                direction=db_direction,
-                rate_value=rate_val,
-                rule_refs=["client_tax_mappings.override"],
-            )
+        if not row:
+            return None
 
-    # 2. Determine default CGNC account code per direction and asset flag
-    if db_direction == "purchase":
-        target_code = "34552"
-        default_label = "État - TVA récupérable sur charges"
-    elif db_direction == "fixed_asset":
-        target_code = "34551"
-        default_label = "État - TVA récupérable sur immobilisations"
+        rate_info = next((r for r in get_available_vat_rates() if r.code == tax_code), None)
+        rate_val = rate_info.rate_value if rate_info else 0.0
+        return ResolvedTaxAccount(
+            account_id=uuid.UUID(str(row[0])),
+            account_code=str(row[1]),
+            label=str(row[2]),
+            tax_code=tax_code,
+            direction=db_direction,
+            rate_value=rate_val,
+            rule_refs=["client_tax_mappings.approved"],
+        )
+
+
+def get_suggested_tax_account_default(direction: str, is_asset: bool = False) -> tuple[str, str]:
+    """Returns suggested default account code and label for UI assistance only.
+
+    NEVER applied automatically to create journal proposal lines.
+    """
+    if is_asset or direction == "fixed_asset":
+        return "34551", "État - TVA récupérable sur immobilisations"
+    elif direction in ("input", "purchase"):
+        return "34552", "État - TVA récupérable sur charges"
+    elif direction == "rounding":
+        pack = get_jurisdiction_pack()
+        rule = pack.get_rule("accounting.fx_rounding.default_account")
+        code = str(rule["value"]) if rule else "6588"
+        return code, "Charges / Produits d'arrondi (centimes)"
     else:
-        target_code = "4455"
-        default_label = "État - TVA facturée"
+        return "4455", "État - TVA facturée"
 
-    # 3. Fetch or seed chart account for client
-    account_id: uuid.UUID | None = None
-    account_label: str = default_label
+
+def resolve_rounding_account(
+    conn: psycopg.Connection,
+    tenant_id: uuid.UUID,
+    client_entity_id: uuid.UUID,
+) -> tuple[uuid.UUID, str, str]:
+    """Resolves rounding account from approved client_tax_mappings direction 'rounding'
+
+    or falls back to pack default marked needs_expert.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT m.account_id, ca.account_code, ca.label
+            FROM client_tax_mappings m
+            JOIN chart_accounts ca ON ca.id = m.account_id AND ca.tenant_id = m.tenant_id
+            WHERE m.tenant_id = %s
+              AND m.client_entity_id = %s
+              AND m.direction = 'rounding'
+              AND m.approved_by IS NOT NULL
+            LIMIT 1;
+            """,
+            (tenant_id, client_entity_id),
+        )
+        row = cur.fetchone()
+        if row:
+            return uuid.UUID(str(row[0])), str(row[1]), str(row[2])
+
+    pack = get_jurisdiction_pack()
+    rule = pack.get_rule("accounting.fx_rounding.default_account")
+    default_code = str(rule["value"]) if rule else "6588"
+    default_label = "Charges / Produits d'arrondi (centimes)"
 
     with conn.cursor() as cur:
         cur.execute(
@@ -148,60 +189,82 @@ def resolve_tax_account(
             WHERE tenant_id = %s AND client_entity_id = %s AND account_code = %s
             LIMIT 1;
             """,
-            (tenant_id, client_entity_id, target_code),
+            (tenant_id, client_entity_id, default_code),
         )
         acc_row = cur.fetchone()
         if acc_row:
-            account_id = uuid.UUID(str(acc_row[0]))
-            account_label = str(acc_row[1])
+            return uuid.UUID(str(acc_row[0])), default_code, str(acc_row[1])
         else:
-            # Seed CGNC chart if empty or missing this account
-            if actor_id:
-                seed_cgnc_chart(conn, tenant_id, client_entity_id, actor_id=actor_id)
-            else:
-                seed_cgnc_chart(conn, tenant_id, client_entity_id, actor_id=str(uuid.uuid4()))
-
+            new_id = uuid.uuid4()
             cur.execute(
                 """
-                SELECT id, label FROM chart_accounts
+                INSERT INTO chart_accounts (id, tenant_id, client_entity_id, account_code, label, source)
+                VALUES (%s, %s, %s, %s, %s, 'manual')
+                RETURNING id;
+                """,
+                (new_id, tenant_id, client_entity_id, default_code, default_label),
+            )
+            return new_id, default_code, default_label
+
+
+def seed_approved_client_tax_mappings(
+    conn: psycopg.Connection,
+    tenant_id: uuid.UUID,
+    client_entity_id: uuid.UUID,
+    approver_id: uuid.UUID | None = None,
+) -> None:
+    """Helper to seed approved tax mappings for a client entity (used for setups and testing)."""
+    user_id = approver_id or uuid.uuid4()
+
+    def _ensure_acc(code: str, label: str) -> uuid.UUID:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id FROM chart_accounts
                 WHERE tenant_id = %s AND client_entity_id = %s AND account_code = %s
                 LIMIT 1;
                 """,
-                (tenant_id, client_entity_id, target_code),
+                (tenant_id, client_entity_id, code),
             )
-            seeded_row = cur.fetchone()
-            if seeded_row:
-                account_id = uuid.UUID(str(seeded_row[0]))
-                account_label = str(seeded_row[1])
-            else:
-                # Insert directly if not in seed (source must be 'cgnc_seed' or 'manual')
-                new_id = uuid.uuid4()
-                cur.execute(
-                    """
-                    INSERT INTO chart_accounts (id, tenant_id, client_entity_id, account_code, label, source)
-                    VALUES (%s, %s, %s, %s, %s, 'cgnc_seed')
-                    RETURNING id;
-                    """,
-                    (new_id, tenant_id, client_entity_id, target_code, default_label),
-                )
-                account_id = new_id
+            row = cur.fetchone()
+            if row:
+                return uuid.UUID(str(row[0]))
+            new_id = uuid.uuid4()
+            cur.execute(
+                """
+                INSERT INTO chart_accounts (id, tenant_id, client_entity_id, account_code, label, source)
+                VALUES (%s, %s, %s, %s, %s, 'cgnc_seed')
+                RETURNING id;
+                """,
+                (new_id, tenant_id, client_entity_id, code, label),
+            )
+            return new_id
 
-    # 4. Find matched rate
-    pack_rate = 0.0
-    rule_key = "vat.rate.standard"
-    rates = get_available_vat_rates()
-    for r in rates:
-        if r.code == tax_code:
-            pack_rate = r.rate_value
-            rule_key = r.rule_key
-            break
+    acc_34552 = _ensure_acc("34552", "État - TVA récupérable sur charges")
+    acc_34551 = _ensure_acc("34551", "État - TVA récupérable sur immobilisations")
+    acc_4455 = _ensure_acc("4455", "État - TVA facturée")
+    acc_6588 = _ensure_acc("6588", "Charges / Produits d'arrondi (centimes)")
 
-    return ResolvedTaxAccount(
-        account_id=account_id,
-        account_code=target_code,
-        label=account_label,
-        tax_code=tax_code,
-        direction=direction,
-        rate_value=pack_rate,
-        rule_refs=[rule_key, "cgnc.seed.accounts"],
-    )
+    mappings = [
+        ("STANDARD_20", "purchase", acc_34552),
+        ("REDUCED_10", "purchase", acc_34552),
+        ("STANDARD_20", "fixed_asset", acc_34551),
+        ("REDUCED_10", "fixed_asset", acc_34551),
+        ("STANDARD_20", "sale", acc_4455),
+        ("REDUCED_10", "sale", acc_4455),
+        ("ROUNDING", "rounding", acc_6588),
+    ]
+
+    with conn.cursor() as cur:
+        for tax_code, direction, acc_id in mappings:
+            cur.execute(
+                """
+                INSERT INTO client_tax_mappings (
+                    tenant_id, client_entity_id, tax_code, direction, account_id, approved_by, approved_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, now())
+                ON CONFLICT (tenant_id, client_entity_id, tax_code, direction)
+                DO UPDATE SET account_id = EXCLUDED.account_id, approved_by = EXCLUDED.approved_by, approved_at = now();
+                """,
+                (tenant_id, client_entity_id, tax_code, direction, acc_id, user_id),
+            )
+

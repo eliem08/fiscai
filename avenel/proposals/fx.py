@@ -1,46 +1,36 @@
 """Foreign exchange (FX) conversion and penny balancing for Moroccan bookkeeping.
 
-Handles Bank Al-Maghrib (BAM) daily fixing rate resolution and guarantees that
-converted lines strictly balance in MAD: sum(debit_mad) == sum(credit_mad).
+Handles Bank Al-Maghrib (BAM) daily fixing rate resolution from the database `fx_rates` table
+and guarantees that converted lines strictly balance in MAD: sum(debit_mad) == sum(credit_mad).
+Any residual cents are posted to an explicit rounding line, never to the counterparty account.
 """
 
 from __future__ import annotations
 
 import datetime
+import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-# Standard sample reference fixing rates from Bank Al-Maghrib (BAM) for testing and offline execution
-# In production, daily BAM rate manifests are loaded per date.
-BAM_SAMPLE_FIXING_RATES: dict[str, dict[str, float]] = {
-    "EUR": {
-        "2026-03-01": 10.8542,
-        "2026-03-15": 10.8750,
-        "2026-03-31": 10.8920,
-        "default": 10.8500,
-    },
-    "USD": {
-        "2026-03-01": 10.1250,
-        "2026-03-15": 10.1420,
-        "2026-03-31": 10.1600,
-        "default": 10.1200,
-    },
-    "GBP": {
-        "2026-03-01": 12.6500,
-        "2026-03-15": 12.6850,
-        "2026-03-31": 12.7100,
-        "default": 12.6500,
-    },
-}
+import psycopg
+
+from avenel.proposals.tax_mapping import resolve_rounding_account
 
 
-def resolve_fx_rate(currency: str, tx_date: datetime.date | str | None) -> tuple[float, datetime.date | None, str | None]:
-    """Resolves BAM fixing rate for given foreign currency and transaction date.
+def resolve_fx_rate(
+    conn: psycopg.Connection,
+    tenant_id: uuid.UUID,
+    currency: str,
+    tx_date: datetime.date | str | None,
+) -> tuple[float | None, datetime.date | None, str | None]:
+    """Resolves FX rate from tenant's fx_rates table for foreign currency and transaction date.
 
-    Returns: (rate, rate_date, source_name)
+    Returns: (rate, rate_date, source_name).
     For MAD: returns (1.0, None, None) to strictly satisfy DB constraint:
     `currency = 'MAD' OR (fx_rate_date IS NOT NULL AND fx_source IS NOT NULL)`
     `currency <> 'MAD' OR fx_rate = 1`
+
+    If missing for foreign currency: returns (None, rate_date, None) -> caller raises FX_RATE_MISSING.
     """
     currency_norm = currency.upper().strip()
     if currency_norm == "MAD":
@@ -57,27 +47,68 @@ def resolve_fx_rate(currency: str, tx_date: datetime.date | str | None) -> tuple
     else:
         date_obj = datetime.date.today()
 
-    date_str = date_obj.isoformat()
-    currency_table = BAM_SAMPLE_FIXING_RATES.get(currency_norm, {})
-    rate = currency_table.get(date_str, currency_table.get("default", 10.0))
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT rate, source
+            FROM fx_rates
+            WHERE tenant_id = %s
+              AND currency = %s
+              AND rate_date = %s
+            LIMIT 1;
+            """,
+            (tenant_id, currency_norm, date_obj),
+        )
+        row = cur.fetchone()
+        if row:
+            return float(row[0]), date_obj, str(row[1])
 
-    return float(rate), date_obj, "BAM"
+    return None, date_obj, None
+
+
+def record_fx_rate(
+    conn: psycopg.Connection,
+    tenant_id: uuid.UUID,
+    rate_date: datetime.date,
+    currency: str,
+    rate: float,
+    source: str = "bam_fixing",
+    created_by: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """Records an entered or imported FX fixing rate in fx_rates table."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO fx_rates (tenant_id, rate_date, currency, rate, source, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (tenant_id, rate_date, currency)
+            DO UPDATE SET rate = EXCLUDED.rate, source = EXCLUDED.source
+            RETURNING id;
+            """,
+            (tenant_id, rate_date, currency.upper().strip(), rate, source, created_by),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise RuntimeError("Failed to insert or update FX rate")
+        return uuid.UUID(str(row[0]))
 
 
 def convert_and_balance_lines(
+    conn: psycopg.Connection,
+    tenant_id: uuid.UUID,
+    client_entity_id: uuid.UUID,
     lines: list[dict[str, Any]],
     currency: str,
     fx_rate: float,
     fx_rate_date: datetime.date | None,
     fx_source: str | None,
+    default_evidence_ref: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Converts line debit_tx and credit_tx into debit_mad and credit_mad.
 
-    Applies exact penny balancing so sum(debit_mad) == sum(credit_mad) and
-    respects DB constraints:
-    - (debit_mad > 0) != (credit_mad > 0)
-    - (debit_tx > 0) != (credit_tx > 0)
-    - (debit_tx > 0) == (debit_mad > 0)
+    Counterparty lines strictly equal invoice TTC converted at the stated rate.
+    Any residual cents are posted to an explicit rounding line (direction 'rounding'
+    from client_tax_mappings or pack default marked needs_expert).
     """
     if not lines:
         return []
@@ -113,17 +144,34 @@ def convert_and_balance_lines(
         item["credit_mad"] = float(c_mad)
         processed.append(item)
 
-    # Adjust rounding discrepancy on largest line if debit_mad != credit_mad
+    # Residual cents check: post to an explicit rounding line, NEVER to counterparty
     diff = total_debit_mad - total_credit_mad
     if diff != Decimal("0.00"):
-        if diff > Decimal("0.00"):
-            # debit > credit: add difference to largest credit line
-            best_idx = max(range(len(processed)), key=lambda i: processed[i]["credit_mad"])
-            processed[best_idx]["credit_mad"] = float(Decimal(str(processed[best_idx]["credit_mad"])) + diff)
-        else:
-            # credit > debit: add abs(diff) to largest debit line
-            diff_abs = abs(diff)
-            best_idx = max(range(len(processed)), key=lambda i: processed[i]["debit_mad"])
-            processed[best_idx]["debit_mad"] = float(Decimal(str(processed[best_idx]["debit_mad"])) + diff_abs)
+        diff_float = abs(float(diff))
+        round_acc_id, round_acc_code, round_acc_label = resolve_rounding_account(
+            conn, tenant_id, client_entity_id
+        )
+
+        evidence = [default_evidence_ref] if default_evidence_ref else []
+
+        rounding_line: dict[str, Any] = {
+            "line_no": len(processed) + 1,
+            "account_id": round_acc_id,
+            "account_code": round_acc_code,
+            "counterparty_id": None,
+            "label": f"Écart d'arrondi / conversion devises ({round_acc_label})",
+            "currency": "MAD",
+            "debit_tx": diff_float if diff < Decimal("0.00") else 0.0,
+            "credit_tx": diff_float if diff > Decimal("0.00") else 0.0,
+            "fx_rate": 1.0,
+            "fx_rate_date": None,
+            "fx_source": None,
+            "debit_mad": diff_float if diff < Decimal("0.00") else 0.0,
+            "credit_mad": diff_float if diff > Decimal("0.00") else 0.0,
+            "tax_code": None,
+            "due_date": None,
+            "evidence_refs": evidence,
+        }
+        processed.append(rounding_line)
 
     return processed

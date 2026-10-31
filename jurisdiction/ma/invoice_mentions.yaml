@@ -44,3 +44,19 @@
   status: "verified"
   note: "Les auto-entrepreneurs sont hors champ d'application de la TVA et ne peuvent pas facturer de TVA"
 
+- key: "invoice.duplicate_window_days"
+  value: 20
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Pratique fiduciaire"
+  status: "verified"
+  note: "Fenêtre temporelle maximale en jours pour suspecter un doublon sur même montant TTC et même fournisseur"
+
+- key: "accounting.fx_rounding.default_account"
+  value: "6588"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGNC / Pratique fiduciaire"
+  status: "needs_expert"
+  note: "TODO(EXPERT): Compte d'imputation par défaut des centimes d'arrondi de conversion de devises (direction rounding)"
+

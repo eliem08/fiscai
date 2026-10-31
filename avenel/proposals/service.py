@@ -5,6 +5,7 @@ Enforces:
 - Rule A.5: Posted, approved, and audited data is immutable.
 - Atomic insertion of balanced lines.
 - Proposal revision management (superseding immutable older revisions).
+- No per-entry approval endpoint (approval occurs only at monthly-file level, Phase 5).
 """
 
 from __future__ import annotations
@@ -20,7 +21,12 @@ from avenel.proposals.duplicates import (
     detect_probable_duplicates,
     record_duplicate_issues_if_any,
 )
-from avenel.proposals.entry_builder import ProposedEntry, build_journal_proposal
+from avenel.proposals.entry_builder import (
+    ProposalGenerationBlockedError,
+    ProposedEntry,
+    build_journal_proposal,
+    validate_line_evidence_refs,
+)
 from avenel.tenancy.auth import require_tenant_context
 
 
@@ -60,7 +66,11 @@ def generate_and_save_proposal_for_document(
     document_id: uuid.UUID,
     actor_id: str | None = None,
 ) -> dict[str, Any]:
-    """Extracts fields from document and generates + persists a balanced proposal in journal_proposals."""
+    """Extracts fields from document and generates + persists a balanced proposal in journal_proposals.
+
+    If generation is blocked (e.g. ACCOUNT_UNMAPPED or FX_RATE_MISSING):
+    records a blocking issue in issues table, creates NO proposal lines, and returns blocked status.
+    """
     require_tenant_context(conn)
 
     # 1. Fetch document and extraction details
@@ -79,7 +89,7 @@ def generate_and_save_proposal_for_document(
         )
         row = cur.fetchone()
         if not row:
-            raise ValueError(f"Aucune extraction valide trouve pour le document {document_id}")
+            raise ValueError(f"Aucune extraction valide trouvée pour le document {document_id}")
 
         doc_type = str(row[0]) if row[0] else "invoice_purchase"
         extracted_fields = row[1] if isinstance(row[1], dict) else json.loads(row[1])
@@ -111,18 +121,68 @@ def generate_and_save_proposal_for_document(
         matches=matches,
     )
 
-    # 3. Build proposed entry
-    entry: ProposedEntry = build_journal_proposal(
-        conn=conn,
-        tenant_id=tenant_id,
-        client_entity_id=client_entity_id,
-        document_id=document_id,
-        doc_type=doc_type,
-        extracted_fields=extracted_fields,
-        actor_id=actor_id,
-    )
+    # 3. Build proposed entry (or catch blocking errors)
+    try:
+        entry: ProposedEntry = build_journal_proposal(
+            conn=conn,
+            tenant_id=tenant_id,
+            client_entity_id=client_entity_id,
+            document_id=document_id,
+            doc_type=doc_type,
+            extracted_fields=extracted_fields,
+            actor_id=actor_id,
+        )
+    except ProposalGenerationBlockedError as blocked_err:
+        # Record blocking issue in issues table
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO issues (
+                    tenant_id, client_entity_id, work_request_id, subject_document_id,
+                    code, severity, status, evidence_refs
+                ) VALUES (%s, %s, %s, %s, %s, 'blocking', 'open', %s::jsonb);
+                """,
+                (
+                    tenant_id,
+                    client_entity_id,
+                    work_request_id,
+                    document_id,
+                    blocked_err.code,
+                    json.dumps([{"detail": blocked_err.detail, "rule_key": blocked_err.rule_key}]),
+                ),
+            )
+        # Create NO proposal lines in journal_proposals or journal_lines
+        return {
+            "status": "blocked",
+            "issue_code": blocked_err.code,
+            "detail": blocked_err.detail,
+            "proposal_id": None,
+            "lines": [],
+        }
 
-    # 4. Insert into journal_proposals and journal_lines atomically
+    # 4. Record any non-blocking detected issues (review severity)
+    if entry.detected_issues:
+        with conn.cursor() as cur:
+            for issue in entry.detected_issues:
+                cur.execute(
+                    """
+                    INSERT INTO issues (
+                        tenant_id, client_entity_id, work_request_id, subject_document_id,
+                        code, severity, status, evidence_refs
+                    ) VALUES (%s, %s, %s, %s, %s, %s, 'open', %s::jsonb);
+                    """,
+                    (
+                        tenant_id,
+                        client_entity_id,
+                        work_request_id,
+                        document_id,
+                        issue["code"],
+                        issue.get("severity", "review"),
+                        json.dumps([{"reason": issue.get("reason", "")}]),
+                    ),
+                )
+
+    # 5. Insert into journal_proposals and journal_lines atomically
     proposal_id = uuid.uuid4()
     lines_dicts = [
         {
@@ -341,7 +401,7 @@ def create_proposal_revision(
 
     if current["status"] in ("approved", "exported"):
         raise ProposalImmutableError(
-            f"La proposition {current_proposal_id} est dj valide ({current['status']}) et immuable."
+            f"La proposition {current_proposal_id} est déjà validée ({current['status']}) et immuable."
         )
 
     # Verify arithmetic balance on new lines
@@ -349,8 +409,13 @@ def create_proposal_revision(
     total_credit = round(sum(float(l.get("credit_mad", 0.0)) for l in updated_lines), 2)
     if total_debit != total_credit or len(updated_lines) < 2:
         raise ProposalUnbalancedError(
-            f"Les critures ne sont pas quilibres : dbit={total_debit:.2f}, crdit={total_credit:.2f}"
+            f"Les écritures ne sont pas équilibrées : débit={total_debit:.2f}, crédit={total_credit:.2f}"
         )
+
+    # Validate evidence refs on updated lines
+    for l in updated_lines:
+        evs = l.get("evidence_refs", [])
+        validate_line_evidence_refs(evs)
 
     new_proposal_id = uuid.uuid4()
     new_revision = int(current["revision"]) + 1
@@ -440,32 +505,3 @@ def create_proposal_revision(
             )
 
     return get_proposal_by_id(conn, tenant_id, new_proposal_id)
-
-
-def approve_proposal(
-    conn: psycopg.Connection,
-    tenant_id: uuid.UUID,
-    proposal_id: uuid.UUID,
-    actor_id: str,
-) -> dict[str, Any]:
-    """Approves a proposal, making it immutable and appending an audit record."""
-    require_tenant_context(conn)
-    current = get_proposal_by_id(conn, tenant_id, proposal_id)
-
-    if current["status"] in ("approved", "exported"):
-        return current
-
-    user_uuid = uuid.UUID(actor_id) if actor_id and len(actor_id) == 36 else None
-
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE journal_proposals
-            SET status = 'approved',
-                last_edited_by = %s
-            WHERE tenant_id = %s AND id = %s;
-            """,
-            (user_uuid, tenant_id, proposal_id),
-        )
-
-    return get_proposal_by_id(conn, tenant_id, proposal_id)

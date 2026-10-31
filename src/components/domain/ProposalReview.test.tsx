@@ -1,6 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { describe, expect, it } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ProposalReview, Proposal } from './ProposalReview';
 
 const mockProposals: Proposal[] = [
@@ -29,7 +28,6 @@ const mockProposals: Proposal[] = [
             field: 'total_ht',
             bbox: [0.1, 0.2, 0.4, 0.25],
             page: 1,
-            rule_ref: 'cgnc.seed.accounts',
           },
         ],
       },
@@ -48,7 +46,6 @@ const mockProposals: Proposal[] = [
             field: 'total_vat',
             bbox: [0.1, 0.3, 0.4, 0.35],
             page: 1,
-            rule_ref: 'vat.rate.standard',
           },
         ],
       },
@@ -66,7 +63,6 @@ const mockProposals: Proposal[] = [
             field: 'total_ttc',
             bbox: [0.1, 0.4, 0.4, 0.45],
             page: 1,
-            rule_ref: 'cgnc.seed.accounts',
           },
         ],
       },
@@ -123,53 +119,70 @@ describe('ProposalReview Component', () => {
   it('renders balanced entry with accounts, totals and balance badge', () => {
     render(<ProposalReview proposals={mockProposals} />);
 
-    expect(screen.getByTestId('balance-indicator')).toHaveTextContent('Équilibrée ✓ (Δ = 0,00 MAD)');
+    expect(screen.getByTestId('balance-indicator')).toHaveTextContent('Équilibré (Δ = 0,00 MAD)');
     expect(screen.getByTestId('proposal-status-badge')).toHaveTextContent('Proposée');
 
-    expect(screen.getByText('ACH · 2026-03-15')).toBeInTheDocument();
+    expect(screen.getByText('Facture achat N° FA-2026-001 - Atlas Fournitures')).toBeInTheDocument();
     expect(screen.getByText('6111')).toBeInTheDocument();
     expect(screen.getByText('34552')).toBeInTheDocument();
     expect(screen.getByText('4411')).toBeInTheDocument();
 
     // Verify initial line 1 evidence bbox is present
-    expect(screen.getByTestId('evidence-bbox')).toBeInTheDocument();
+    expect(screen.getByTestId('evidence-bbox-overlay')).toBeInTheDocument();
   });
 
   it('navigates between proposals using next/prev buttons and keyboard shortcuts J/K', async () => {
     render(<ProposalReview proposals={mockProposals} />);
 
-    expect(screen.getByText('ACH · 2026-03-15')).toBeInTheDocument();
+    expect(screen.getByText('Facture achat N° FA-2026-001 - Atlas Fournitures')).toBeInTheDocument();
 
     // Press 'j' key to navigate to next proposal
     fireEvent.keyDown(window, { key: 'j' });
-    expect(screen.getByText('VEN · 2026-03-20')).toBeInTheDocument();
+    expect(screen.getByText('Facture vente N° V-2026-099 - Client Beta')).toBeInTheDocument();
 
     // Press 'k' key to navigate back to previous proposal
     fireEvent.keyDown(window, { key: 'k' });
-    expect(screen.getByText('ACH · 2026-03-15')).toBeInTheDocument();
-  });
-
-  it('approves active balanced proposal with button or Enter key', async () => {
-    const handleApprove = vi.fn().mockResolvedValue(undefined);
-    render(<ProposalReview proposals={mockProposals} onApprove={handleApprove} />);
-
-    const approveBtn = screen.getByTestId('approve-proposal-btn');
-    fireEvent.click(approveBtn);
-
-    await waitFor(() => {
-      expect(handleApprove).toHaveBeenCalledWith('prop-001');
-      expect(screen.getByTestId('toast-message')).toHaveTextContent('Écriture validée');
-    });
+    expect(screen.getByText('Facture achat N° FA-2026-001 - Atlas Fournitures')).toBeInTheDocument();
   });
 
   it('updates evidence bbox when clicking a different proposal line', () => {
     render(<ProposalReview proposals={mockProposals} />);
 
     // Click line 2 (TVA line)
-    const line2 = screen.getByTestId('proposal-line-2');
+    const line2 = screen.getByTestId('proposal-line-row-2');
     fireEvent.click(line2);
 
-    expect(screen.getByText(/Traçabilité & Source de la ligne #2/)).toBeInTheDocument();
-    expect(screen.getByTestId('evidence-bbox')).toBeInTheDocument();
+    expect(screen.getByTestId('evidence-bbox-overlay')).toBeInTheDocument();
+  });
+
+  it('Enter key confirms the focused line only (toast: Ligne confirmée)', async () => {
+    render(<ProposalReview proposals={mockProposals} />);
+
+    // Line 1 is initially focused. Press Enter.
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    expect(screen.getByTestId('toast-message')).toHaveTextContent('Ligne confirmée');
+  });
+
+  it('removes any approve action button and confirms no per-entry approval endpoint exists', () => {
+    render(<ProposalReview proposals={mockProposals} />);
+
+    // Must NOT have any approve buttons or actions
+    expect(screen.queryByTestId('approve-proposal-btn')).toBeNull();
+    expect(screen.queryByRole('button', { name: /valider l'écriture/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /approuver/i })).toBeNull();
+  });
+
+  it('tests that no keyboard path triggers approval', async () => {
+    render(<ProposalReview proposals={mockProposals} />);
+
+    // Press various keys including Enter, Space, 'a', 'v'
+    fireEvent.keyDown(window, { key: 'Enter' });
+    fireEvent.keyDown(window, { key: ' ' });
+    fireEvent.keyDown(window, { key: 'a' });
+    fireEvent.keyDown(window, { key: 'v' });
+
+    // Status badge must strictly remain "Proposée", never "Approuvée"
+    expect(screen.getByTestId('proposal-status-badge')).toHaveTextContent('Proposée');
   });
 });
