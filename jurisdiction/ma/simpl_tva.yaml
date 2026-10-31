@@ -1,0 +1,15 @@
+- key: "simpl_tva.xsd_version"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "DGI SIMPL-TVA portal"
+  status: "needs_expert"
+  note: "Official SIMPL-TVA XSD version for relevé des déductions requires confirmation (Part I #7)"
+
+- key: "simpl_tva.payment_method_codes"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "DGI SIMPL-TVA specification"
+  status: "needs_expert"
+  note: "Official payment method codes for SIMPL-TVA export require expert verification (Part I #7)"

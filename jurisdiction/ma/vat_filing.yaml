@@ -1,0 +1,15 @@
+- key: "vat.filing.threshold.monthly"
+  value: 1000000.00
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 108"
+  status: "verified"
+  note: "Régime mensuel obligatoire si CA annuel >= 1 000 000 MAD"
+
+- key: "vat.filing.deadline.wording"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 110-111 / LF 2026"
+  status: "needs_expert"
+  note: "TVA return deadline wording for monthly and quarterly filers in 2026 needs expert signoff (Part I #2)"

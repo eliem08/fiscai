@@ -1,0 +1,23 @@
+- key: "compliance.cndp.provider_routes"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Loi 09-08 / CNDP"
+  status: "needs_expert"
+  note: "CNDP cross-border transfer routes for each provider and region require legal counsel signoff (Part I #8)"
+
+- key: "compliance.cndp.dpa_wording"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Loi 09-08"
+  status: "needs_expert"
+  note: "Data Processing Agreement wording under Moroccan privacy law requires legal confirmation (Part I #8)"
+
+- key: "compliance.cybersecurity.loi_05_20"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Loi 05-20 relative à la cybersécurité"
+  status: "needs_expert"
+  note: "Applicability of Loi 05-20 to cloud-hosted fiduciaire data requires counsel assessment (Part I #8)"

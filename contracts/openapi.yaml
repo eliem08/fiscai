@@ -1,0 +1,767 @@
+openapi: 3.1.0
+info:
+  title: AVENEL API
+  version: 0.1.0
+  description: API for monthly bookkeeping preparation for Moroccan accounting firms.
+  contact:
+    name: AVENEL Engineering
+    email: contact@avenel.ma
+servers:
+  - url: http://localhost:8000/v1
+    description: Local development server
+
+tags:
+  - name: Session
+    description: User session and membership operations
+  - name: Clients
+    description: Client entity operations
+  - name: Periods
+    description: Accounting period operations
+  - name: Chart
+    description: Chart of accounts operations
+  - name: Compliance
+    description: Moroccan regulatory and CNDP compliance operations
+  - name: Work
+    description: Monthly bookkeeping file operations
+
+paths:
+  /me:
+    get:
+      operationId: getCurrentUserSession
+      tags:
+        - Session
+      summary: Get current authenticated user session
+      description: Returns active session and tenant membership for the authenticated user.
+      responses:
+        "200":
+          description: Active session and tenant membership
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSession"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /client-entities:
+    get:
+      operationId: listClientEntities
+      tags:
+        - Clients
+      summary: List client companies in tenant
+      description: Returns a paginated list of client companies for the current tenant.
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: List of client companies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientEntityList"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+    post:
+      operationId: createClientEntity
+      tags:
+        - Clients
+      summary: Create a client company
+      description: Creates a new client company record in the current tenant.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClientEntityRequest"
+      responses:
+        "201":
+          description: Client company created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientEntity"
+        "400":
+          $ref: "#/components/responses/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /client-entities/{id}:
+    get:
+      operationId: getClientEntity
+      tags:
+        - Clients
+      summary: Get client company by ID
+      description: Returns client company details. Returns 404 if not found or unauthorized.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Client company details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientEntity"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+    put:
+      operationId: updateClientEntity
+      tags:
+        - Clients
+      summary: Update client company
+      description: Updates client company details. Returns 404 if not found or unauthorized.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClientEntityRequest"
+      responses:
+        "200":
+          description: Client company updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientEntity"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+    patch:
+      operationId: patchClientEntity
+      tags:
+        - Clients
+      summary: Patch client company
+      description: Patches client company details. Returns 404 if not found or unauthorized.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClientEntityRequest"
+      responses:
+        "200":
+          description: Client company patched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientEntity"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+        "409":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /client-entities/{id}/archive:
+    post:
+      operationId: archiveClientEntity
+      tags:
+        - Clients
+      summary: Archive client company
+      description: Archives client company. Archived clients become read-only. Returns 404 if not found or unauthorized.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      responses:
+        "200":
+          description: Client company archived
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  id:
+                    type: string
+                    format: uuid
+                required:
+                  - status
+                  - id
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /client-entities/{id}/periods:
+    get:
+      operationId: listAccountingPeriods
+      tags:
+        - Periods
+      summary: List accounting periods for client company
+      description: Returns accounting periods. Returns 404 if client company does not exist or unauthorized.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Accounting periods list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountingPeriodList"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+    post:
+      operationId: createAccountingPeriod
+      tags:
+        - Periods
+      summary: Open accounting period for client company
+      description: Opens a monthly accounting period with overlap protection. Returns 409 on overlap.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountingPeriodRequest"
+      responses:
+        "201":
+          description: Accounting period opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountingPeriod"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+        "409":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /client-entities/{id}/chart-accounts:
+    get:
+      operationId: listChartAccounts
+      tags:
+        - Chart
+      summary: List chart of accounts for client company
+      description: Returns chart accounts. Returns 404 if client company does not exist or unauthorized.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Chart accounts list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartAccountList"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /client-entities/{id}/chart-accounts/seed-cgnc:
+    post:
+      operationId: seedCgncChart
+      tags:
+        - Chart
+      summary: Seed standard Moroccan CGNC chart accounts
+      description: Seeds core accounts from the Moroccan Plan Comptable Général.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      responses:
+        "200":
+          description: Standard CGNC accounts seeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeedCgncResponse"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /client-entities/{id}/chart-accounts/import:
+    post:
+      operationId: importChartAccounts
+      tags:
+        - Chart
+      summary: Import chart of accounts from CSV or XLSX
+      description: Imports account code and label pairs.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportChartRequest"
+      responses:
+        "200":
+          description: Accounts imported successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportChartResponse"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /compliance/dpa:
+    get:
+      operationId: getDpaDocument
+      tags:
+        - Compliance
+      summary: Generate Data Processing Agreement
+      description: Generates preparatory draft DPA under Moroccan Loi 09-08 for current tenant.
+      responses:
+        "200":
+          description: DPA document
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /compliance/cndp-dossier:
+    get:
+      operationId: getCndpDossier
+      tags:
+        - Compliance
+      summary: Generate CNDP declaration dossier
+      description: Generates CNDP declaration dossier under Loi 09-08.
+      responses:
+        "200":
+          description: CNDP declaration dossier
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /work-requests:
+    get:
+      operationId: listWorkRequests
+      tags:
+        - Work
+      summary: List monthly bookkeeping files
+      description: Returns list of work requests filtered optionally by accounting period.
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Work requests list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkRequestList"
+    post:
+      operationId: createWorkRequest
+      tags:
+        - Work
+      summary: Create a monthly bookkeeping file
+      description: Creates and opens a new monthly bookkeeping work request for a period.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkRequestInput"
+      responses:
+        "201":
+          description: Work request created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkRequest"
+        "409":
+          $ref: "#/components/responses/ProblemDetails"
+
+components:
+  parameters:
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 200
+
+  responses:
+    ProblemDetails:
+      description: RFC 9457 Problem Details error response
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  schemas:
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: ["string", "null"]
+        request_id:
+          type: ["string", "null"]
+        errors:
+          type: array
+          items:
+            type: object
+            required:
+              - field
+              - message
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    UserSession:
+      type: object
+      required:
+        - user_id
+        - tenant_id
+        - role
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+        full_name:
+          type: string
+        email:
+          type: string
+
+    ClientEntity:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - legal_name
+        - functional_currency
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        legal_name:
+          type: string
+        ice:
+          type: ["string", "null"]
+        if_number:
+          type: ["string", "null"]
+        functional_currency:
+          type: string
+          enum: [MAD]
+
+    CreateClientEntityRequest:
+      type: object
+      required:
+        - legal_name
+      properties:
+        legal_name:
+          type: string
+        ice:
+          type: ["string", "null"]
+        if_number:
+          type: ["string", "null"]
+
+    ClientEntityList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientEntity"
+        next_cursor:
+          type: ["string", "null"]
+
+    WorkRequest:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - client_entity_id
+        - accounting_period_id
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        client_entity_id:
+          type: string
+          format: uuid
+        accounting_period_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        current_revision:
+          type: integer
+
+    CreateWorkRequestInput:
+      type: object
+      required:
+        - client_entity_id
+        - accounting_period_id
+      properties:
+        client_entity_id:
+          type: string
+          format: uuid
+        accounting_period_id:
+          type: string
+          format: uuid
+
+    WorkRequestList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkRequest"
+
+    UpdateClientEntityRequest:
+      type: object
+      properties:
+        legal_name:
+          type: string
+        display_name:
+          type: ["string", "null"]
+        ice:
+          type: ["string", "null"]
+        if_number:
+          type: ["string", "null"]
+        rc_number:
+          type: ["string", "null"]
+        rc_city:
+          type: ["string", "null"]
+        tp_number:
+          type: ["string", "null"]
+        vat_regime:
+          type: string
+          enum: [encaissement, debit, not_liable]
+        vat_filing_frequency:
+          type: string
+          enum: [monthly, quarterly]
+
+    AccountingPeriod:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - client_entity_id
+        - period_code
+        - starts_on
+        - ends_on
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        client_entity_id:
+          type: string
+          format: uuid
+        period_code:
+          type: string
+        starts_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+        fiscal_year_end:
+          type: string
+          format: date
+        status:
+          type: string
+        jurisdiction_pack_version:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AccountingPeriodList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountingPeriod"
+
+    CreateAccountingPeriodRequest:
+      type: object
+      required:
+        - period_code
+        - starts_on
+        - ends_on
+        - fiscal_year_end
+      properties:
+        period_code:
+          type: string
+        starts_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+        fiscal_year_end:
+          type: string
+          format: date
+
+    ChartAccount:
+      type: object
+      required:
+        - id
+        - account_code
+        - label
+        - cgnc_class
+      properties:
+        id:
+          type: string
+          format: uuid
+        account_code:
+          type: string
+        label:
+          type: string
+        cgnc_class:
+          type: integer
+        source:
+          type: string
+        effective_from:
+          type: string
+          format: date
+        effective_to:
+          type: ["string", "null"]
+
+    ChartAccountList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChartAccount"
+
+    SeedCgncResponse:
+      type: object
+      required:
+        - seeded_count
+        - message
+      properties:
+        seeded_count:
+          type: integer
+        message:
+          type: string
+
+    ImportChartRequest:
+      type: object
+      required:
+        - accounts
+      properties:
+        accounts:
+          type: array
+          items:
+            type: object
+            required:
+              - code
+              - label
+            properties:
+              code:
+                type: string
+              label:
+                type: string
+
+    ImportChartResponse:
+      type: object
+      required:
+        - imported_count
+        - message
+      properties:
+        imported_count:
+          type: integer
+        message:
+          type: string
+

@@ -1,0 +1,15 @@
+- key: "compliance.oec.ai_assisted_preparation"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Ordre des Experts-Comptables (Loi 15-89)"
+  status: "needs_expert"
+  note: "OEC formal position on AI-assisted preparation tools requires confirmation (Part I #9)"
+
+- key: "compliance.oec.professional_secrecy"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Code Pénal art. 446 / Loi 15-89 art. 67"
+  status: "needs_expert"
+  note: "Subcontracting and cloud processing boundaries under professional secrecy require legal signoff (Part I #9)"

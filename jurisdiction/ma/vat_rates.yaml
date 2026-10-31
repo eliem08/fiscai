@@ -1,0 +1,23 @@
+- key: "vat.rate.standard"
+  value: 0.20
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 99-A"
+  status: "verified"
+  note: "Taux normal de 20%"
+
+- key: "vat.rate.reduced_10"
+  value: 0.10
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 99-B"
+  status: "verified"
+  note: "Taux réduit de 10%"
+
+- key: "vat.rate.mapping_items"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "LF 2024 / CGI transition"
+  status: "needs_expert"
+  note: "Item-to-rate mapping for 10% rate and transition rates needs expert signoff (Part I #4)"

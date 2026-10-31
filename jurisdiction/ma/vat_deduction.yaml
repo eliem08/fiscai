@@ -1,0 +1,23 @@
+- key: "vat.deduction.cash_limit.daily"
+  value: 5000.00
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 106-II"
+  status: "verified"
+  note: "Plafond de paiement en espèces par jour et par fournisseur (5 000 MAD)"
+
+- key: "vat.deduction.cash_limit.monthly"
+  value: 50000.00
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 106-II"
+  status: "verified"
+  note: "Plafond de paiement en espèces par mois et par fournisseur (50 000 MAD)"
+
+- key: "vat.deduction.cash_limit.basis"
+  value: "TTC"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 106-II"
+  status: "needs_expert"
+  note: "Basis of cash payment limit (HT vs TTC) needs confirmation; conservative TTC applied (Part I #1)"

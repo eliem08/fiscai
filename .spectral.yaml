@@ -1,0 +1,32 @@
+extends: ["spectral:oas"]
+rules:
+  operation-operationId:
+    description: "Every operation must have an operationId."
+    severity: error
+    given: "$.paths.*[get,post,put,patch,delete]"
+    then:
+      field: operationId
+      function: defined
+
+  operation-tags:
+    description: "Every operation must have tags."
+    severity: error
+    given: "$.paths.*[get,post,put,patch,delete]"
+    then:
+      field: tags
+      function: defined
+
+  no-nullable:
+    description: "In OpenAPI 3.1, use type: [type, 'null'] instead of nullable: true."
+    severity: error
+    given: "$..[?(@.nullable)]"
+    then:
+      function: falsy
+
+  idempotency-key-required:
+    description: "Every POST, PATCH, and DELETE operation must declare a required Idempotency-Key header."
+    severity: error
+    given: "$.paths.*[post,patch,delete]"
+    then:
+      field: parameters
+      function: defined

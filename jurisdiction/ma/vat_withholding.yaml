@@ -1,0 +1,28 @@
+- key: "vat.withholding.ras_2026.thresholds"
+  value:
+    stage_2026_07_01: 500000000.00
+    stage_2027_01_01: 350000000.00
+    stage_2028_01_01: 200000000.00
+  effective_from: "2026-07-01"
+  effective_to: null
+  source: "LF 2026 + DGI Note Circulaire 737"
+  status: "needs_expert"
+  note: "LF 2026 staged payer turnover thresholds require primary circular confirmation (Part I #3)"
+
+- key: "vat.withholding.ras_2026.service_lists"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 117"
+  status: "needs_expert"
+  note: "Exact service lists for 75% and 100% RAS require expert confirmation (Part I #3)"
+
+- key: "vat.withholding.ras.accounts"
+  value:
+    receivable_supplier: "3456"
+    payable_client: "4456"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGNC / DGI"
+  status: "needs_expert"
+  note: "Specific ledger sub-accounts for VAT withheld at source need expert validation (Part I #3)"

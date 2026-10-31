@@ -1,0 +1,43 @@
+- key: "issues.DOC_UNREADABLE"
+  value:
+    code: "DOC_UNREADABLE"
+    default_severity: "blocking"
+    title_fr: "Document illisible"
+    title_en: "Unreadable document"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product"
+  status: "verified"
+
+- key: "issues.TOTALS_INCONSISTENT"
+  value:
+    code: "TOTALS_INCONSISTENT"
+    default_severity: "blocking"
+    title_fr: "Totaux incohérents"
+    title_en: "Inconsistent totals"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product"
+  status: "verified"
+
+- key: "issues.VAT_RATE_UNKNOWN"
+  value:
+    code: "VAT_RATE_UNKNOWN"
+    default_severity: "blocking"
+    title_fr: "Taux de TVA inconnu"
+    title_en: "Unknown VAT rate"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product"
+  status: "verified"
+
+- key: "issues.RULE_NEEDS_EXPERT"
+  value:
+    code: "RULE_NEEDS_EXPERT"
+    default_severity: "review"
+    title_fr: "Règle nécessitant validation experte"
+    title_en: "Rule requiring expert confirmation"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product"
+  status: "verified"

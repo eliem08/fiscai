@@ -1,0 +1,16 @@
+pack_code: "MA"
+pack_version: "MA-2026.10.1"
+name: "Maroc — Pack Fiscal & Comptable"
+as_of_date: "2026-10-30"
+files:
+  - vat_rates.yaml
+  - vat_deduction.yaml
+  - vat_filing.yaml
+  - vat_withholding.yaml
+  - identifiers.yaml
+  - cgnc_seed.yaml
+  - simpl_tva.yaml
+  - compliance.yaml
+  - oec_position.yaml
+  - einvoicing.yaml
+  - issues.yaml

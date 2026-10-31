@@ -1,0 +1,31 @@
+- key: "einvoicing.enabled"
+  value: false
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "DGI"
+  status: "verified"
+  note: "E-invoicing remains disabled until official implementing decree is published"
+
+- key: "einvoicing.decree_status"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Bulletin Officiel"
+  status: "needs_expert"
+  note: "Implementing decree publication date and legal calendar require confirmation (Part I #10)"
+
+- key: "einvoicing.ubl_profile"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "DGI technical specifications"
+  status: "needs_expert"
+  note: "Moroccan national UBL profile for e-invoicing is not yet published (Part I #10)"
+
+- key: "einvoicing.clearance_identifiers"
+  value: null
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "DGI"
+  status: "needs_expert"
+  note: "Clearance identifier format and QR code verification rules are not yet published (Part I #10)"
