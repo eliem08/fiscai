@@ -20,7 +20,12 @@ from typing import Any
 import psycopg
 
 from avenel.documents.renderer import render_document
-from avenel.documents.scanner import record_scan_evidence, scan_bytes
+from avenel.documents.scanner import (
+    ANTIVIRUS_UNAVAILABLE_BANNER,
+    check_intake_health,
+    record_scan_evidence,
+    scan_bytes,
+)
 from avenel.extraction.classifier import run_classifier
 from avenel.extraction.extractor import run_extractor
 from avenel.extraction.validation import (
@@ -210,6 +215,20 @@ def process_uploaded_document(
 ) -> dict[str, Any]:
     """Completes upload, executes malware scan, rendering, OCR, classification, extraction, and validation."""
     storage = get_storage()
+
+    # 0. Check system intake health (ClamAV availability and signature freshness <= 48h)
+    health = check_intake_health()
+    if health.intake_paused:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE documents
+                SET status = 'quarantined'
+                WHERE tenant_id = %s AND id = %s;
+                """,
+                (tenant_id, document_id),
+            )
+        raise QuarantineError(health.banner_message or ANTIVIRUS_UNAVAILABLE_BANNER)
 
     # 1. Fetch document and version details
     with conn.cursor() as cur:

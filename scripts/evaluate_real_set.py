@@ -23,6 +23,7 @@ import jsonschema  # type: ignore[import-untyped]
 
 from avenel.extraction.classifier import classify_document_text
 from avenel.extraction.extractor import extract_fields_from_ocr
+from avenel.extraction.validation import validate_invoice_extraction
 from avenel.ocr.adapter import ENGINE_NAME, ENGINE_VERSION, get_ocr_engine
 
 REAL_FIXTURES_DIR = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "real"
@@ -64,6 +65,9 @@ def evaluate_dataset(
     ]
 
     field_counts = {f: {"total": 0, "exact_match": 0, "failures": 0} for f in evaluated_fields}
+    stats_silent: dict[str, dict[str, int]] = {
+        f: {"caught": 0, "silent": 0} for f in evaluated_fields
+    }
     composite_id_date_matches = 0
     composite_totals_matches = 0
     total_docs = len(records)
@@ -89,6 +93,10 @@ def evaluate_dataset(
 
         # 3. Extractor
         extracted_fields = extract_fields_from_ocr(ocr_res, doc_type=predicted_doc_type)
+
+        # 4. Deterministic Validator
+        validation_report = validate_invoice_extraction(extracted_fields, doc_type=predicted_doc_type)
+        issue_codes = {i.code for i in validation_report.issues}
 
         pred_ice = extracted_fields["supplier_ice"]["value"]
         pred_no = extracted_fields["invoice_number"]["value"]
@@ -134,6 +142,24 @@ def evaluate_dataset(
             else:
                 field_counts[f]["failures"] += 1
 
+                # Classify failure: caught (flagged issue or unconfirmed) vs silent (wrong value without issue)
+                field_conf = extracted_fields.get(f, {}).get("confidence", 1.0)
+                field_val = extracted_fields.get(f, {}).get("value")
+                field_confirmed = extracted_fields.get(f, {}).get("confirmed", False)
+                is_caught = False
+
+                if f in ("total_ht", "total_vat", "total_ttc"):
+                    if "TOTALS_INCONSISTENT" in issue_codes or field_conf < 0.9 or field_val is None or not field_confirmed:
+                        is_caught = True
+                else:
+                    if not validation_report.is_valid or field_conf < 0.9 or field_val is None or not field_confirmed:
+                        is_caught = True
+
+                if is_caught:
+                    stats_silent[f]["caught"] += 1
+                else:
+                    stats_silent[f]["silent"] += 1
+
         # Composite Part H Gates
         if ice_ok and no_ok and date_ok:
             composite_id_date_matches += 1
@@ -145,16 +171,27 @@ def evaluate_dataset(
     for f in evaluated_fields:
         tot = field_counts[f]["total"]
         em = field_counts[f]["exact_match"]
+        fail = field_counts[f]["failures"]
+        caught = stats_silent[f]["caught"]
+        silent = stats_silent[f]["silent"]
         rate = em / tot if tot > 0 else 0.0
+        silent_rate = silent / tot if tot > 0 else 0.0
         per_field_rates[f] = {
             "total": tot,
             "exact_match": em,
-            "failures": field_counts[f]["failures"],
+            "failures": fail,
+            "caught": caught,
+            "silent": silent,
             "rate": round(rate, 4),
+            "silent_rate": round(silent_rate, 4),
         }
 
     gate_id_date_rate = composite_id_date_matches / total_docs if total_docs > 0 else 0.0
     gate_totals_rate = composite_totals_matches / total_docs if total_docs > 0 else 0.0
+
+    silent_totals_failures = sum(stats_silent[f]["silent"] for f in ("total_ht", "total_vat", "total_ttc"))
+    totals_evaluated = 3 * total_docs if total_docs > 0 else 1
+    silent_totals_rate = silent_totals_failures / totals_evaluated
 
     return {
         "total_documents": total_docs,
@@ -171,6 +208,11 @@ def evaluate_dataset(
                 "target": 0.98,
                 "achieved": round(gate_totals_rate, 4),
                 "met": gate_totals_rate >= 0.98,
+            },
+            "totals_silent_error_rate": {
+                "target": 0.0,
+                "achieved": round(silent_totals_rate, 4),
+                "met": silent_totals_rate == 0.0,
             },
         },
     }
@@ -206,6 +248,19 @@ def generate_real_set_markdown_report(results: dict[str, Any]) -> str:
         "|---|---|---|---|",
         f"| ICE, invoice number, date exact match | ≥ 97,0% | {gates['ice_no_date_exact_match']['achieved']:.2%} | {'Validé' if gates['ice_no_date_exact_match']['met'] else 'Non atteint'} |",
         f"| HT, TVA par taux, TTC exact match | ≥ 98,0% | {gates['totals_exact_match']['achieved']:.2%} | {'Validé' if gates['totals_exact_match']['met'] else 'Non atteint'} |",
+        f"| Erreurs silencieuses HT/TVA/TTC (Silent Error Rate) | 0,0% | {gates['totals_silent_error_rate']['achieved']:.2%} | {'Validé' if gates['totals_silent_error_rate']['met'] else 'Non atteint'} |",
+        "",
+        "## 3. Taux d'Erreurs Silencieuses (Silent Error Rate)",
+        "",
+        "| Champ fiscal | Échecs totaux | Détectés (Caught) | Silencieux (Silent) | Taux d'erreur silencieuse |",
+        "|---|---|---|---|---|",
+        f"| `supplier_ice` | {pf['supplier_ice']['failures']} | {pf['supplier_ice']['caught']} | {pf['supplier_ice']['silent']} | {pf['supplier_ice']['silent_rate']:.2%} |",
+        f"| `invoice_number` | {pf['invoice_number']['failures']} | {pf['invoice_number']['caught']} | {pf['invoice_number']['silent']} | {pf['invoice_number']['silent_rate']:.2%} |",
+        f"| `invoice_date` | {pf['invoice_date']['failures']} | {pf['invoice_date']['caught']} | {pf['invoice_date']['silent']} | {pf['invoice_date']['silent_rate']:.2%} |",
+        f"| `supplier_if` | {pf['supplier_if']['failures']} | {pf['supplier_if']['caught']} | {pf['supplier_if']['silent']} | {pf['supplier_if']['silent_rate']:.2%} |",
+        f"| `total_ht` | {pf['total_ht']['failures']} | {pf['total_ht']['caught']} | {pf['total_ht']['silent']} | {pf['total_ht']['silent_rate']:.2%} |",
+        f"| `total_vat` | {pf['total_vat']['failures']} | {pf['total_vat']['caught']} | {pf['total_vat']['silent']} | {pf['total_vat']['silent_rate']:.2%} |",
+        f"| `total_ttc` | {pf['total_ttc']['failures']} | {pf['total_ttc']['caught']} | {pf['total_ttc']['silent']} | {pf['total_ttc']['silent_rate']:.2%} |",
     ]
     return "\n".join(lines)
 

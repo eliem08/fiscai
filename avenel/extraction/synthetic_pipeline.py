@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from avenel.extraction.classifier import classify_document_text
 from avenel.extraction.extractor import extract_fields_from_ocr
+from avenel.extraction.validation import validate_invoice_extraction
 from avenel.ocr.adapter import ENGINE_NAME, ENGINE_VERSION, get_ocr_engine
 from tests.fixtures.documents_300 import DocumentFixture, generate_300_fixtures
 
@@ -88,11 +89,11 @@ def _render_fixture_to_image(fixture: DocumentFixture, width: int = 800, height:
 
 
 def get_default_synthetic_set() -> list[DocumentFixture]:
-    """Builds the 45-document synthetic test corpus: 30 French, 10 Arabic, 5 Mixed FR/AR."""
+    """Builds the 60-document synthetic test corpus: 30 French, 10 Arabic, 20 Mixed FR/AR."""
     all_300 = generate_300_fixtures()
     fr_docs = [f for f in all_300 if f.language == "fr"][:30]
     ar_docs = [f for f in all_300 if f.language == "ar"][:10]
-    mixed_docs = [f for f in all_300 if f.language == "mixed"][:5]
+    mixed_docs = [f for f in all_300 if f.language == "mixed"]
     return fr_docs + ar_docs + mixed_docs
 
 
@@ -131,6 +132,9 @@ def run_synthetic_pipeline_test(
         lang: {f: {"total": 0, "exact_match": 0, "failures": 0} for f in evaluated_fields}
         for lang in languages
     }
+    stats_silent: dict[str, dict[str, int]] = {
+        f: {"caught": 0, "silent": 0} for f in evaluated_fields
+    }
 
     doc_counts_by_lang: dict[str, int] = {lang: 0 for lang in languages}
 
@@ -161,7 +165,11 @@ def run_synthetic_pipeline_test(
         # 4. Extractor
         extracted_fields = extract_fields_from_ocr(ocr_res, doc_type=doc_type_val)
 
-        # 5. Field comparisons
+        # 5. Deterministic Validator (checks arithmetic, mandatory mentions, tax codes)
+        validation_report = validate_invoice_extraction(extracted_fields, doc_type=doc_type_val)
+        issue_codes = {i.code for i in validation_report.issues}
+
+        # 6. Field comparisons
         gt = fix.ground_truth
         pred_ice = extracted_fields["supplier_ice"]["value"]
         pred_no = extracted_fields["invoice_number"]["value"]
@@ -213,6 +221,24 @@ def run_synthetic_pipeline_test(
                 stats_by_lang[doc_lang][f]["failures"] += 1
                 doc_has_failure = True
 
+                # Classify failure: caught (flagged issue or unconfirmed) vs silent (wrong without alert)
+                field_conf = extracted_fields.get(f, {}).get("confidence", 1.0)
+                field_val = extracted_fields.get(f, {}).get("value")
+                field_confirmed = extracted_fields.get(f, {}).get("confirmed", False)
+                is_caught = False
+
+                if f in ("total_ht", "total_vat", "total_ttc"):
+                    if "TOTALS_INCONSISTENT" in issue_codes or field_conf < 0.9 or field_val is None or not field_confirmed:
+                        is_caught = True
+                else:
+                    if not validation_report.is_valid or field_conf < 0.9 or field_val is None or not field_confirmed:
+                        is_caught = True
+
+                if is_caught:
+                    stats_silent[f]["caught"] += 1
+                else:
+                    stats_silent[f]["silent"] += 1
+
         if doc_has_failure and len(failure_samples) < 8:
             failure_samples.append({
                 "doc_id": fix.doc_id,
@@ -236,12 +262,19 @@ def run_synthetic_pipeline_test(
     for f in evaluated_fields:
         tot = stats_overall[f]["total"]
         em = stats_overall[f]["exact_match"]
-        rate = em / tot if tot > 0 else 0.0
+        fail = stats_overall[f]["failures"]
+        acc = em / tot if tot > 0 else 0.0
+        caught = stats_silent[f]["caught"]
+        silent = stats_silent[f]["silent"]
+        silent_acc = silent / tot if tot > 0 else 0.0
         per_field_rates[f] = {
             "total": tot,
             "exact_match": em,
-            "failures": stats_overall[f]["failures"],
-            "rate": round(rate, 4),
+            "failures": fail,
+            "caught": caught,
+            "silent": silent,
+            "rate": round(acc, 4),
+            "silent_rate": round(silent_acc, 4),
         }
 
     # Per language rates
@@ -256,6 +289,10 @@ def run_synthetic_pipeline_test(
 
     id_date_rate = composite_id_date_matches / total_fixtures if total_fixtures > 0 else 0.0
     totals_rate = composite_totals_matches / total_fixtures if total_fixtures > 0 else 0.0
+
+    silent_totals_failures = sum(stats_silent[f]["silent"] for f in ("total_ht", "total_vat", "total_ttc"))
+    totals_evaluated = 3 * total_fixtures if total_fixtures > 0 else 1
+    silent_totals_rate = silent_totals_failures / totals_evaluated
 
     return {
         "fixture_count": total_fixtures,
@@ -280,6 +317,11 @@ def run_synthetic_pipeline_test(
                 "achieved": round(totals_rate, 4),
                 "met": totals_rate >= 0.98,
             },
+            "totals_silent_error_rate": {
+                "target": 0.0,
+                "achieved": round(silent_totals_rate, 4),
+                "met": silent_totals_rate == 0.0,
+            },
         },
         "failure_samples": failure_samples,
     }
@@ -297,7 +339,7 @@ def format_synthetic_pipeline_report(results: dict[str, Any]) -> str:
         f"**Moteur OCR :** `{results['ocr_engine']}` (version `{results['ocr_engine_version']}`)",
         "**Modèles de reconnaissance :** ONNX Latin & Arabe multilingues (ancrés par checksums SHA-256)",
         f"**Taille du corpus synthétique :** **{results['fixture_count']} documents**",
-        f"**Composition du corpus :** **{comp['fr']} factures Français (FR)**, **{comp['ar']} factures Arabe (AR)**, **{comp['mixed']} factures Bilingues/Mixtes (FR/AR)**",
+        f"**Composition du corpus :** **{comp['fr']} factures Français (FR)**, **{comp['ar']} factures Arabe (AR, synthetic, clean rendering)**, **{comp['mixed']} factures Bilingues/Mixtes (FR/AR)**",
         f"**Perturbations appliquées aux images :** {results['perturbations']}",
         "",
         "> [!IMPORTANT]",
@@ -324,7 +366,7 @@ def format_synthetic_pipeline_report(results: dict[str, Any]) -> str:
         "",
         "## 2. Résultats Exact Match par Langue",
         "",
-        "| Champ extrait | Français (FR - 30 docs) | Arabe (AR - 10 docs) | Bilingue / Mixte (FR/AR - 5 docs) |",
+        f"| Champ extrait | Français (FR - {comp['fr']} docs) | Arabe (AR - {comp['ar']} docs, synthetic, clean rendering) | Bilingue / Mixte (FR/AR - {comp['mixed']} docs) |",
         "| :--- | :---: | :---: | :---: |",
     ])
 
@@ -360,9 +402,33 @@ def format_synthetic_pipeline_report(results: dict[str, Any]) -> str:
         f"| **HT, TVA par taux, TTC** | Exact Match | >= {tot_target_pct} | **{tot_achieved_pct}** | {tot_status} |"
     )
 
+    silent_totals = gates.get("totals_silent_error_rate", {"target": 0.0, "achieved": 0.0, "met": True})
+    silent_status = "Atteint" if silent_totals["met"] else "Non atteint"
+    silent_achieved_pct = f"{silent_totals['achieved'] * 100:.2f}%"
+    lines.append(
+        f"| **Erreurs silencieuses HT/TVA/TTC** | Silent Error Rate | 0.0% | **{silent_achieved_pct}** | {silent_status} |"
+    )
+
     lines.extend([
         "",
-        "## 4. Analyse Transparente des Échecs sous Bruit d'Image",
+        "## 4. Taux d'Erreurs Silencieuses (Silent Error Rate)",
+        "",
+        "| Champ extrait | Échecs totaux | Détectés (Caught) | Silencieux (Silent) | Taux d'erreur silencieuse |",
+        "| :--- | :---: | :---: | :---: | :---: |",
+    ])
+
+    for field, data in results["per_field"].items():
+        caught = data.get("caught", 0)
+        silent = data.get("silent", 0)
+        tot = data.get("total", 0)
+        silent_pct = f"{(silent / tot * 100):.2f}%" if tot > 0 else "0.00%"
+        lines.append(
+            f"| `{field}` | {data['failures']} | {caught} | {silent} | **{silent_pct}** |"
+        )
+
+    lines.extend([
+        "",
+        "## 5. Analyse Transparente des Échecs sous Bruit d'Image",
         "",
         "Détail des documents ayant présenté des écarts sous les perturbations de scan :",
         "",

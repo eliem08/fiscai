@@ -25,6 +25,8 @@ tags:
     description: Monthly bookkeeping file operations
   - name: Documents
     description: Document intake, OCR, and extraction operations
+  - name: Proposals
+    description: Accounting proposal generation, revision, and approval operations
   - name: Issues
     description: Document and reconciliation exception management
 
@@ -674,6 +676,143 @@ paths:
         "404":
           $ref: "#/components/responses/ProblemDetails"
 
+  /work-requests/{id}/proposals:
+    get:
+      operationId: listWorkRequestProposals
+      tags:
+        - Proposals
+      summary: List accounting proposals for work request
+      description: Returns active journal proposals and their lines for the specified work request.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProposalDetail"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /proposals/{id}:
+    get:
+      operationId: getProposal
+      tags:
+        - Proposals
+      summary: Get accounting proposal details
+      description: Returns a single proposal and its balanced lines.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Proposal details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalDetail"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+    put:
+      operationId: updateProposal
+      tags:
+        - Proposals
+      summary: Edit proposal lines
+      description: Creates a new proposal revision (N+1) and marks the current revision superseded.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProposalUpdateRequest"
+      responses:
+        "200":
+          description: New proposal revision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalDetail"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+        "409":
+          $ref: "#/components/responses/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /documents/{id}:generate-proposal:
+    post:
+      operationId: generateDocumentProposal
+      tags:
+        - Proposals
+      summary: Generate journal proposal for document
+      description: Automatically constructs balanced CGNC lines and counterparty mapping for extraction.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      responses:
+        "200":
+          description: Generated proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalDetail"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /proposals/{id}:approve:
+    post:
+      operationId: approveProposal
+      tags:
+        - Proposals
+      summary: Approve accounting proposal
+      description: Freezes the proposal lines and marks it approved with an immutable audit trail.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      responses:
+        "200":
+          description: Approved proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalDetail"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ProblemDetails"
+
 components:
   parameters:
     IdempotencyKeyHeader:
@@ -1189,4 +1328,169 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/IssueDetail"
+
+    ProposalLineDetail:
+      type: object
+      required:
+        - id
+        - line_no
+        - account_id
+        - account_code
+        - label
+        - currency
+        - debit_mad
+        - credit_mad
+      properties:
+        id:
+          type: string
+          format: uuid
+        line_no:
+          type: integer
+        account_id:
+          type: string
+          format: uuid
+        account_code:
+          type: string
+        counterparty_id:
+          type: ["string", "null"]
+          format: uuid
+        label:
+          type: string
+        currency:
+          type: string
+        debit_tx:
+          type: number
+        credit_tx:
+          type: number
+        fx_rate:
+          type: number
+        fx_rate_date:
+          type: ["string", "null"]
+        fx_source:
+          type: ["string", "null"]
+        debit_mad:
+          type: number
+        credit_mad:
+          type: number
+        tax_code:
+          type: ["string", "null"]
+        due_date:
+          type: ["string", "null"]
+        evidence_refs:
+          type: array
+          items:
+            type: object
+
+    ProposalDetail:
+      type: object
+      required:
+        - id
+        - client_entity_id
+        - work_request_id
+        - revision
+        - journal_code
+        - entry_date
+        - label
+        - status
+        - lines
+      properties:
+        id:
+          type: string
+          format: uuid
+        client_entity_id:
+          type: string
+          format: uuid
+        work_request_id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+        journal_code:
+          type: string
+        entry_date:
+          type: string
+          format: date
+        label:
+          type: string
+        source_document_id:
+          type: ["string", "null"]
+          format: uuid
+        status:
+          type: string
+          enum: [proposed, edited, approved, exported, superseded, rejected]
+        supersedes_id:
+          type: ["string", "null"]
+          format: uuid
+        rule_refs:
+          type: array
+          items:
+            type: string
+        proposed_by:
+          type: string
+        content_hash:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProposalLineDetail"
+
+    ProposalLineInput:
+      type: object
+      required:
+        - account_id
+        - account_code
+        - label
+        - debit_mad
+        - credit_mad
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        account_code:
+          type: string
+        counterparty_id:
+          type: ["string", "null"]
+          format: uuid
+        label:
+          type: string
+        currency:
+          type: string
+          default: "MAD"
+        debit_tx:
+          type: number
+        credit_tx:
+          type: number
+        fx_rate:
+          type: number
+          default: 1.0
+        fx_rate_date:
+          type: ["string", "null"]
+        fx_source:
+          type: ["string", "null"]
+        debit_mad:
+          type: number
+        credit_mad:
+          type: number
+        tax_code:
+          type: ["string", "null"]
+        due_date:
+          type: ["string", "null"]
+        evidence_refs:
+          type: array
+          items:
+            type: object
+
+    ProposalUpdateRequest:
+      type: object
+      required:
+        - lines
+      properties:
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProposalLineInput"
+
 

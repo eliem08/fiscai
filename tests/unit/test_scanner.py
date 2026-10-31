@@ -2,12 +2,12 @@
 
 import os
 from unittest.mock import MagicMock, patch
-import uuid
 
 from avenel.documents.scanner import (
+    ANTIVIRUS_UNAVAILABLE_BANNER,
     EICAR_SIGNATURE,
     SignatureStatus,
-    check_and_record_clamav_freshness,
+    check_intake_health,
     get_clamav_signature_status,
     scan_bytes,
 )
@@ -69,8 +69,8 @@ def test_clamav_signature_status_fresh_and_stale():
         assert st.age_hours >= 70.0
 
 
-def test_check_and_record_clamav_freshness_creates_blocking_issue():
-    """When ClamAV signatures are older than 48 hours, records INTEGRATION_FAILURE blocking issue."""
+def test_check_intake_health_paused_when_stale():
+    """When ClamAV signatures are older than 48 hours, intake_paused is True, banner is set, and no issue row is inserted."""
     mock_status = SignatureStatus(
         is_fresh=False,
         age_hours=52.5,
@@ -78,30 +78,50 @@ def test_check_and_record_clamav_freshness_creates_blocking_issue():
         version_info="ClamAV 1.4.1/27600/Wed Oct 28 08:30:00 2026",
     )
 
-    mock_conn = MagicMock()
-    mock_cursor = MagicMock()
-    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-    issue_uuid = uuid.uuid4()
-    mock_cursor.fetchone.return_value = (str(issue_uuid),)
+    with patch("avenel.documents.scanner.get_clamav_signature_status", return_value=mock_status):
+        health = check_intake_health()
 
-    tenant_id = uuid.uuid4()
-    client_entity_id = uuid.uuid4()
-    work_request_id = uuid.uuid4()
+        assert health.intake_paused is True
+        assert health.signature_age_hours == 52.5
+        assert health.banner_message == ANTIVIRUS_UNAVAILABLE_BANNER
+        assert "52.5h" in (health.reason or "")
+
+
+def test_check_intake_health_paused_when_scanner_down():
+    """When ClamAV daemon is unreachable in live mode, intake_paused is True with console banner."""
+    mock_status = SignatureStatus(
+        is_fresh=True,
+        age_hours=2.0,
+        signature_date="Sat Oct 31 12:00:00 2026",
+        version_info="ClamAV 1.4.1/27654",
+    )
+
+    with (
+        patch.dict(os.environ, {"AVENEL_SCANNER_OFFLINE_FIXTURE": "false", "AVENEL_CLAMAV_PORT": "59999"}),
+        patch("avenel.documents.scanner.get_clamav_signature_status", return_value=mock_status),
+    ):
+        health = check_intake_health()
+
+        assert health.intake_paused is True
+        assert health.scanner_available is False
+        assert health.banner_message == ANTIVIRUS_UNAVAILABLE_BANNER
+
+
+def test_check_intake_health_active_when_fresh():
+    """When ClamAV daemon is reachable and signatures <= 48h, intake_paused is False."""
+    mock_status = SignatureStatus(
+        is_fresh=True,
+        age_hours=4.0,
+        signature_date="Sat Oct 31 12:00:00 2026",
+        version_info="ClamAV 1.4.1/27654",
+    )
 
     with patch("avenel.documents.scanner.get_clamav_signature_status", return_value=mock_status):
-        st, created_id = check_and_record_clamav_freshness(
-            conn=mock_conn,
-            tenant_id=tenant_id,
-            client_entity_id=client_entity_id,
-            work_request_id=work_request_id,
-        )
+        health = check_intake_health()
 
-        assert st.is_fresh is False
-        assert created_id == issue_uuid
-        mock_cursor.execute.assert_called_once()
-        call_args = mock_cursor.execute.call_args[0]
-        sql_query = call_args[0]
-        assert "INTEGRATION_FAILURE" in sql_query
-        assert "blocking" in sql_query
+        assert health.intake_paused is False
+        assert health.banner_message is None
+        assert health.reason is None
+
 
 

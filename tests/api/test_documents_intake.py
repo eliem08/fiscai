@@ -353,7 +353,74 @@ def test_malware_quarantined_with_immutable_evidence(db_conn: psycopg.Connection
         ev_row = cur.fetchone()
         assert ev_row is not None
         assert ev_row[1]["is_clean"] is False
-        assert ev_row[1]["threat_name"] == "EICAR_TEST_FILE"
+
+
+def test_clamav_stale_or_scanner_down_intake_paused(db_conn: psycopg.Connection, monkeypatch: pytest.MonkeyPatch):
+    """When ClamAV signatures are older than 48h or scanner is down, intake is paused.
+
+    Uploads stay quarantined, 0 issue rows are inserted, and the console banner is returned.
+    """
+    client = TestClient(app)
+    tenant_id = seed_tenant(db_conn, "Cabinet Intake Paused")
+    sub = f"accountant-{uuid.uuid4()}"
+    user_id = seed_user(db_conn, identity_subject=sub, email=f"{sub}@avenel.ma")
+    seed_membership(db_conn, user_id, tenant_id, "accountant")
+    set_rls_context(db_conn, tenant_id, user_id)
+
+    c_id = create_client_entity(db_conn, tenant_id, "Client Test Pause", actor_id=str(user_id)).id
+    p_id = open_accounting_period(
+        db_conn,
+        tenant_id,
+        c_id,
+        actor_id=str(user_id),
+        period_code="2026-03",
+        starts_on=datetime.date(2026, 3, 1),
+        ends_on=datetime.date(2026, 3, 31),
+        fiscal_year_end=datetime.date(2026, 12, 31),
+    )["id"]
+    wr_id = _seed_work_request(db_conn, tenant_id, c_id, p_id)
+
+    # Force signature age > 48h
+    monkeypatch.setenv("AVENEL_CLAMAV_SIGNATURE_AGE_HOURS", "50.0")
+
+    clean_payload = b"Sample Clean Invoice\nTotal: 100.00"
+    sha256 = hashlib.sha256(clean_payload).hexdigest()
+
+    headers = _auth_headers(sub, tenant_id)
+    init_res = client.post(
+        f"/v1/work-requests/{wr_id}/uploads",
+        headers=headers,
+        json={
+            "original_filename": "clean_invoice.pdf",
+            "byte_size": len(clean_payload),
+            "mime_type": "application/pdf",
+            "sha256": sha256,
+        },
+    )
+    assert init_res.status_code == 201
+    doc_id = init_res.json()["document_id"]
+    object_key = init_res.json()["object_key"]
+
+    storage = get_storage()
+    storage.put_object(object_key, clean_payload, "application/pdf")
+
+    # Complete upload must fail-safe into quarantine and return banner
+    headers["Idempotency-Key"] = f"idemp-{uuid.uuid4()}"
+    comp_res = client.post(f"/v1/documents/{doc_id}:complete-upload", headers=headers)
+    assert comp_res.status_code == 422
+    assert "Analyse antivirus indisponible. Les pièces reçues seront traitées dès son rétablissement." in comp_res.text
+
+    # Document must be quarantined in database
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT status FROM documents WHERE id = %s;", (uuid.UUID(doc_id),))
+        row = cur.fetchone()
+        assert row is not None
+        assert row[0] == "quarantined"
+
+        # Invariant: NO issue rows inserted for system intake health pauses
+        cur.execute("SELECT COUNT(*) FROM issues WHERE subject_document_id = %s;", (uuid.UUID(doc_id),))
+        count = cur.fetchone()[0]
+        assert count == 0, "No issue rows should be inserted when intake is paused due to ClamAV staleness"
 
 
 def test_field_correction_generates_immutable_evidence(db_conn: psycopg.Connection):

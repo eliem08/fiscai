@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,9 +16,11 @@ from apps.api.routes import (
     compliance,
     documents,
     periods,
+    proposals,
     session,
     work_requests,
 )
+from avenel.documents.scanner import check_intake_health
 from avenel.tenancy.jwt import MfaRequiredError
 
 app = FastAPI(
@@ -104,8 +108,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 @app.get("/health", tags=["System"])
-async def health_check() -> dict[str, str]:
-    return {"status": "ok", "service": "avenel-api"}
+async def health_check() -> dict[str, Any]:
+    intake = check_intake_health()
+    return {
+        "status": "ok",
+        "service": "avenel-api",
+        "intake_paused": intake.intake_paused,
+        "banner_message": intake.banner_message,
+    }
 
 
 # Include domain routers
@@ -116,3 +126,4 @@ app.include_router(chart.router)
 app.include_router(compliance.router)
 app.include_router(work_requests.router)
 app.include_router(documents.router)
+app.include_router(proposals.router)

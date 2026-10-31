@@ -19,6 +19,7 @@ export interface DocumentViewerProps {
   initialFields: Record<string, FieldExtraction>;
   onSave?: (updatedFields: Record<string, FieldExtraction>) => Promise<void>;
   readOnly?: boolean;
+  isQuarantined?: boolean;
 }
 
 export const FIELD_LABELS: Record<string, string> = {
@@ -43,6 +44,7 @@ export function DocumentViewer({
   initialFields,
   onSave,
   readOnly = false,
+  isQuarantined = false,
 }: DocumentViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -313,6 +315,16 @@ export function DocumentViewer({
                 Sélectionnez un champ pour afficher son repère source sur la pièce.
               </p>
             </div>
+
+            {/* Antivirus Unavailable Quarantine Banner */}
+            {isQuarantined && (
+              <div
+                data-testid="antivirus-paused-banner"
+                className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded text-xs font-medium"
+              >
+                Analyse antivirus indisponible. Les pièces reçues seront traitées dès son rétablissement.
+              </div>
+            )}
 
             {/* Fields Form */}
             <div className="space-y-3.5">

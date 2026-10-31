@@ -234,46 +234,71 @@ def get_clamav_signature_status(
         )
 
 
-def check_and_record_clamav_freshness(
-    conn: psycopg.Connection,
-    tenant_id: uuid.UUID,
-    client_entity_id: uuid.UUID,
-    work_request_id: uuid.UUID,
-    document_id: uuid.UUID | None = None,
-) -> tuple[SignatureStatus, uuid.UUID | None]:
-    """Verifies ClamAV signatures. If older than 48h, creates an INTEGRATION_FAILURE issue and metric."""
-    status = get_clamav_signature_status()
-    issue_id: uuid.UUID | None = None
+ANTIVIRUS_UNAVAILABLE_BANNER = "Analyse antivirus indisponible. Les pièces reçues seront traitées dès son rétablissement."
 
-    if not status.is_fresh:
-        # Emit structured log metric
-        print(f"[METRIC] clamav_signature_stale_total=1 age_hours={status.age_hours}")
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO issues (
-                    tenant_id, client_entity_id, work_request_id, code, severity,
-                    status, evidence_refs, subject_document_id
-                ) VALUES (
-                    %s, %s, %s, 'INTEGRATION_FAILURE', 'blocking',
-                    'open', %s::jsonb, %s
-                )
-                RETURNING id;
-                """,
-                (
-                    tenant_id,
-                    client_entity_id,
-                    work_request_id,
-                    json.dumps({
-                        "reason": f"ClamAV virus signatures are older than 48 hours ({status.age_hours}h old)",
-                        "version_info": status.version_info,
-                        "signature_date": status.signature_date,
-                    }),
-                    document_id,
-                ),
-            )
-            row = cur.fetchone()
-            if row:
-                issue_id = uuid.UUID(str(row[0]))
 
-    return status, issue_id
+@dataclass(frozen=True)
+class SystemIntakeHealth:
+    intake_paused: bool
+    reason: str | None
+    banner_message: str | None
+    signature_age_hours: float
+    scanner_available: bool
+
+
+def check_intake_health() -> SystemIntakeHealth:
+    """Evaluates ClamAV daemon reachability and signature freshness.
+
+    If scanner is down or signatures are older than 48 hours:
+    - intake_paused = True
+    - Emits ops alert and metric
+    - Sets banner_message = ANTIVIRUS_UNAVAILABLE_BANNER
+    Does NOT insert issue rows (system health flag controls intake pause).
+    """
+    fixture_mode = os.environ.get("AVENEL_SCANNER_OFFLINE_FIXTURE", "true").lower() in ("1", "true", "yes")
+    sig_status = get_clamav_signature_status()
+
+    # Allow test overrides via environment
+    forced_age = os.environ.get("AVENEL_CLAMAV_SIGNATURE_AGE_HOURS")
+    age = float(forced_age) if forced_age is not None else sig_status.age_hours
+
+    clamav_host = os.environ.get("AVENEL_CLAMAV_HOST", "127.0.0.1")
+    clamav_port = int(os.environ.get("AVENEL_CLAMAV_PORT", "3310"))
+
+    scanner_down = False
+    if not fixture_mode:
+        try:
+            with socket.create_connection((clamav_host, clamav_port), timeout=1.0) as sock:
+                sock.sendall(b"PING\n")
+                resp = sock.recv(16)
+                if b"PONG" not in resp:
+                    scanner_down = True
+        except (OSError, TimeoutError):
+            scanner_down = True
+
+    is_stale = (age > 48.0)
+
+    if scanner_down or is_stale:
+        reason = (
+            f"ClamAV virus signatures are older than 48 hours ({age:.1f}h old)"
+            if is_stale
+            else f"ClamAV daemon unreachable at {clamav_host}:{clamav_port}"
+        )
+        print(f"[OPS_ALERT] clamav_intake_paused: {reason}")
+        print(f"[METRIC] clamav_intake_paused_total=1 age_hours={age:.1f} scanner_down={int(scanner_down)}")
+        return SystemIntakeHealth(
+            intake_paused=True,
+            reason=reason,
+            banner_message=ANTIVIRUS_UNAVAILABLE_BANNER,
+            signature_age_hours=age,
+            scanner_available=not scanner_down,
+        )
+
+    return SystemIntakeHealth(
+        intake_paused=False,
+        reason=None,
+        banner_message=None,
+        signature_age_hours=age,
+        scanner_available=True,
+    )
+
