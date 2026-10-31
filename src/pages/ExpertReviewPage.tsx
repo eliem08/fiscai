@@ -179,7 +179,7 @@ export function ExpertReviewPage() {
                   <div className="space-y-2">
                     {(
                       [
-                        ['validated', 'Dossier validé — conforme pour transmission'],
+                        ['validated', 'Dossier validé — prêt pour transmission'],
                         ['correction_required', 'Correction requise — retour au client'],
                         ['rejected', 'Rejeté — dossier non exploitable'],
                       ] as const

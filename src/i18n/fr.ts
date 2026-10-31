@@ -304,7 +304,7 @@ export const fr = {
     'Sélectionnez un dossier en attente pour examiner les constats de l’IA.',
   'review.findingsCount': '{count} constat(s) IA',
   'review.decisionRequired': 'Décision *',
-  'review.validated': 'Dossier validé — conforme pour transmission',
+  'review.validated': 'Dossier validé — prêt pour transmission',
   'review.correction': 'Correction requise — retour au client',
   'review.rejected': 'Rejeté — dossier non exploitable',
   'review.commentLabel': 'Commentaire expert * (journalisé)',
@@ -419,8 +419,8 @@ export const fr = {
   'pagination.next': 'Page suivante',
 
   // --- Checklist statuses ---
-  'check.passed': 'Conforme',
-  'check.failed': 'Non conforme',
+  'check.passed': 'Vérifié',
+  'check.failed': 'Anomalie détectée',
   'check.needs_review': 'Revue requise',
   'check.missing': 'Manquant',
 

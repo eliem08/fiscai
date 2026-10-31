@@ -189,7 +189,7 @@ describe('ChecklistView', () => {
       />,
     );
     const list = screen.getByTestId('checklist');
-    expect(list).toHaveTextContent('Conforme');
+    expect(list).toHaveTextContent('Vérifié');
     expect(list).toHaveTextContent('Manquant');
     expect(list).toHaveTextContent('Ajouter');
   });
