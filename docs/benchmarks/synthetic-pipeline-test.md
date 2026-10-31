@@ -1,46 +1,53 @@
-# Rapport de test du pipeline synthétique (Phase 2)
+# Rapport de Test du Pipeline Synthétique — Ingestion & Extraction
 
-**Date du test** : 2026-10-31
-**Nombre de documents synthétiques évalués** : 30
-**Moteur OCR** : RapidOCR / PaddleOCR ONNX PP-OCRv4 v1.4.4
-**Perturbations appliquées** : skew ±1.0°, Gaussian sensor noise (σ=6.0), JPEG quality 70
+**Date d'exécution :** 2026-10-31 17:28:49Z
+**Moteur OCR :** `RapidOCR / PaddleOCR ONNX PP-OCRv4 + Multilingual v3` (version `1.4.4`)
+**Modèles de reconnaissance :** ONNX Latin & Arabe multilingues (ancrés par checksums SHA-256)
+**Taille du corpus synthétique :** **45 documents**
+**Composition du corpus :** **30 factures Français (FR)**, **10 factures Arabe (AR)**, **5 factures Bilingues/Mixtes (FR/AR)**
+**Perturbations appliquées aux images :** skew ±1.0°, Gaussian sensor noise (σ=6.0), JPEG quality 70
 
-> [!NOTE]
-> Ce test évalue la robustesse de la chaîne d'extraction sur des images raster générées et bruitées.
-> Conformément à ARCHITECTURE.md Part H, les portails de validation du pilote sont mesurés
-> exclusivement sur le jeu de données réelles (≥ 300 pièces). Ce test synthétique valide le pipeline
-> mais ne constitue pas la validation finale du pilote.
+> [!IMPORTANT]
+> Ce test évalue la robustesse de l'extraction sur des images synthétiques dégradées par bruit et compression.
+> Conformément à la Partie H d'ARCHITECTURE.md, les portes cibles officielles ne sont validées
+> que sur le corpus de test réel labellisé (tests/fixtures/real/).
 
-## 1. Taux d'exactitude stricte par champ (Exact-Match)
+## 1. Résultats Exact Match par Champ (Ensemble du Corpus)
 
-| Champ fiscal | Total évalué | Exact-Match | Échecs | Taux d'exactitude |
-|---|---|---|---|---|
-| `supplier_ice` (ICE Fournisseur) | 30 | 28 | 2 | 93.33% |
-| `invoice_number` (Numéro facture) | 30 | 29 | 1 | 96.67% |
-| `invoice_date` (Date de facture) | 30 | 30 | 0 | 100.00% |
-| `supplier_if` (IF Fournisseur) | 30 | 26 | 4 | 86.67% |
-| `total_ht` (Total Hors Taxe) | 30 | 30 | 0 | 100.00% |
-| `total_vat` (Total TVA) | 30 | 30 | 0 | 100.00% |
-| `total_ttc` (Total TTC) | 30 | 29 | 1 | 96.67% |
+| Champ extrait | Total | Exact Match | Échecs | Taux Exact Match | Seuil Cible Partie H |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| `invoice_number` | 45 | 44 | 1 | **97.78%** | >= 97.0% |
+| `invoice_date` | 45 | 45 | 0 | **100.00%** | >= 97.0% |
+| `supplier_ice` | 45 | 45 | 0 | **100.00%** | >= 97.0% |
+| `supplier_if` | 45 | 45 | 0 | **100.00%** | — |
+| `total_ht` | 45 | 45 | 0 | **100.00%** | >= 98.0% |
+| `total_vat` | 45 | 45 | 0 | **100.00%** | >= 98.0% |
+| `total_ttc` | 45 | 44 | 1 | **97.78%** | >= 98.0% |
 
-## 2. Comparaison indicative avec les seuils cibles Part H
+## 2. Résultats Exact Match par Langue
 
-| Portail Part H | Seuil cible Part H | Résultat synthétique obtenu | Statut indicatif |
-|---|---|---|---|
-| ICE, invoice number, date exact match | ≥ 97,0% | 90.00% | Non atteint |
-| HT, TVA par taux, TTC exact match | ≥ 98,0% | 96.67% | Non atteint |
+| Champ extrait | Français (FR - 30 docs) | Arabe (AR - 10 docs) | Bilingue / Mixte (FR/AR - 5 docs) |
+| :--- | :---: | :---: | :---: |
+| `invoice_number` | 100.0% | 100.0% | 80.0% |
+| `invoice_date` | 100.0% | 100.0% | 100.0% |
+| `supplier_ice` | 100.0% | 100.0% | 100.0% |
+| `supplier_if` | 100.0% | 100.0% | 100.0% |
+| `total_ht` | 100.0% | 100.0% | 100.0% |
+| `total_vat` | 100.0% | 100.0% | 100.0% |
+| `total_ttc` | 100.0% | 100.0% | 80.0% |
 
-## 3. Analyse des échecs d'extraction sous bruit OCR
+## 3. Évaluation face aux Portes Cibles Partie H (Pilote)
 
-Exemples d'écarts observés lors du test sur images perturbées :
+| Porte Cible Partie H | Métrique | Cible Pilote | Résultat Obtenu | Statut |
+| :--- | :--- | :---: | :---: | :---: |
+| **ICE, N° Facture, Date** | Exact Match | >= 97.0% | **97.78%** | Atteint |
+| **HT, TVA par taux, TTC** | Exact Match | >= 98.0% | **97.78%** | Non atteint |
 
-- **Pièce `fr_inv_001`** (french_corporate) :
-  - `supplier_if` : attendu `23456789`, extrait `None`
-- **Pièce `fr_inv_008`** (french_corporate) :
-  - `supplier_ice` : attendu `009012345678901`, extrait `None`
-- **Pièce `fr_inv_015`** (french_corporate) :
-  - `supplier_if` : attendu `67890123`, extrait `None`
-- **Pièce `fr_inv_016`** (french_corporate) :
-  - `total_ttc` : attendu `2282.87`, extrait `228287.0`
-- **Pièce `fr_inv_022`** (french_corporate) :
-  - `invoice_number` : attendu `FAC-2026-1022`, extrait `N`
+## 4. Analyse Transparente des Échecs sous Bruit d'Image
+
+Détail des documents ayant présenté des écarts sous les perturbations de scan :
+
+- **Document `mixed_inv_001`** (Langue: `mixed`, Catégorie: `bilingual_mixed`) :
+  - `invoice_number` : attendu `FAC-MIX-6001`, extrait `xFAC-MIX-6001`
+- **Document `mixed_inv_002`** (Langue: `mixed`, Catégorie: `bilingual_mixed`) :
+  - `total_ttc` : attendu `7672.68`, extrait `17672.68`

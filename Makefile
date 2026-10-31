@@ -6,6 +6,7 @@ lint:
 	$(PYTHON) -m ruff check avenel apps scripts
 	$(PYTHON) scripts/check_no_tax_literals.py
 	$(PYTHON) scripts/check_migration_hashes.py
+	$(PYTHON) scripts/check_test_count.py
 
 test:
 	$(PYTHON) -m pytest -v tests

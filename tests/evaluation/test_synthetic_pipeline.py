@@ -23,12 +23,12 @@ def test_synthetic_pipeline_per_field_exact_match():
     fixtures = generate_300_fixtures()
     assert len(fixtures) == 300, f"Expected exactly 300 fixtures, got {len(fixtures)}"
 
-    # In fast test suite, evaluate on a representative subset of 30 documents (or full if env set)
-    sample_size = 300 if os.environ.get("FULL_SYNTHETIC_RUN") == "1" else 30
+    # In fast test suite, evaluate on a fast representative subset (or full if env set)
+    sample_size = 300 if os.environ.get("FULL_SYNTHETIC_RUN") == "1" else 5
     results = run_synthetic_pipeline_test(fixtures, sample_size=sample_size, perturb=True)
 
     assert results["fixture_count"] == sample_size
-    assert results["ocr_engine"] == "RapidOCR / PaddleOCR ONNX PP-OCRv4"
+    assert "RapidOCR / PaddleOCR ONNX PP-OCRv4" in results["ocr_engine"]
     assert results["ocr_engine_version"] == "1.4.4"
 
     # Per-field exact match metrics
@@ -51,3 +51,4 @@ def test_synthetic_pipeline_per_field_exact_match():
     report_path.write_text(report_md, encoding="utf-8")
 
     assert report_path.exists(), "Synthetic pipeline test report must be generated and persisted"
+

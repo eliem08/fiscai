@@ -92,6 +92,12 @@ jobs:
         env:
           PYTHON: python
 
+      - name: Verify Test Count Invariant
+        run: |
+          python scripts/check_test_count.py
+        env:
+          PYTHON: python
+
       - name: Run Typecheck
         run: |
           make typecheck

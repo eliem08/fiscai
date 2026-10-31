@@ -61,8 +61,8 @@ def generate_300_fixtures() -> list[DocumentFixture]:
     random.seed(42)  # Deterministic generation
     fixtures: list[DocumentFixture] = []
 
-    # 1. 180 French standard corporate invoices and receipts
-    for i in range(1, 181):
+    # 1. 160 French standard corporate invoices and receipts
+    for i in range(1, 161):
         sup_name, sup_ice, sup_if, sup_rc, sup_addr = random.choice(FRENCH_SUPPLIERS)
         inv_no = f"FAC-2026-{1000 + i}"
         day = (i % 28) + 1
@@ -343,6 +343,61 @@ Total TTC: {ttc_val:.2f} MAD
                     "payment_method": "unspecified",
                     "supplier_is_auto_entrepreneur": False,
                     "doc_type": doc_type,
+                },
+            )
+        )
+
+    # 6. 20 Bilingual / Mixed French-Arabic invoices
+    for i in range(1, 21):
+        sup_name_fr, sup_ice, sup_if, sup_rc, sup_addr_fr = random.choice(FRENCH_SUPPLIERS)
+        sup_name_ar, _, _, _, _ = random.choice(ARABIC_SUPPLIERS)
+        inv_no = f"FAC-MIX-{6000 + i}"
+        day = (i % 28) + 1
+        month = ((i % 12) + 1)
+        inv_date = f"2026-{month:02d}-{day:02d}"
+
+        ht_val = round(random.uniform(800.0, 7500.0), 2)
+        vat_val = round(ht_val * std_rate, 2)
+        ttc_val = round(ht_val + vat_val, 2)
+
+        doc_text = f"""
+{sup_name_fr} / {sup_name_ar}
+{sup_addr_fr}
+ICE / المعرف الموحد : {sup_ice}
+IF / التعريف الضريبي : {sup_if} | RC: {sup_rc}
+============================================================
+FACTURE / فاتورة
+Facture N° / رقم الفاتورة : {inv_no}
+Date / التاريخ : {day:02d}/{month:02d}/2026
+Client: Atlas Distribution SA / الزبون : شركة الأطلس
+ICE Client / المعرف الموحد للزبون : 009876543210987
+
+Désignation / البيان:
+Prestations techniques et fournitures / خدمات تقنية
+Total HT / المجموع دون الضريبة : {ht_val:.2f} MAD
+TVA 20% Base: {ht_val:.2f} Montant: {vat_val:.2f}
+Total TTC / المجموع شامل الضريبة : {ttc_val:.2f} MAD
+============================================================
+"""
+        fixtures.append(
+            DocumentFixture(
+                doc_id=f"mixed_inv_{i:03d}",
+                category="bilingual_mixed",
+                language="mixed",
+                doc_type="purchase_invoice",
+                raw_content=doc_text.strip().encode("utf-8"),
+                mime_type="application/pdf",
+                ground_truth={
+                    "invoice_number": inv_no,
+                    "invoice_date": inv_date,
+                    "supplier_ice": sup_ice,
+                    "supplier_if": sup_if,
+                    "total_ht": ht_val,
+                    "total_vat": vat_val,
+                    "total_ttc": ttc_val,
+                    "payment_method": "unspecified",
+                    "supplier_is_auto_entrepreneur": False,
+                    "doc_type": "purchase_invoice",
                 },
             )
         )

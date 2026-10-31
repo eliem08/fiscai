@@ -59,11 +59,21 @@ services:
     restart: unless-stopped
     ports:
       - "3310:3310"
+    volumes:
+      - clamav_db:/var/lib/clamav
     healthcheck:
       test: ["CMD", "clamdscan", "--ping", "127.0.0.1:3310"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  freshclam:
+    image: clamav/clamav:1.4.1@sha256:7bc508bfb2a2657e28bcebca693441ef31ce03ca9bbf8787ad36d1eb2f59fa9e
+    container_name: avenel-freshclam
+    restart: unless-stopped
+    command: ["freshclam", "-d", "-c", "24"]
+    volumes:
+      - clamav_db:/var/lib/clamav
 
   ocr:
     # STUB: The OCR service is currently a placeholder mock/stub (python http.server). Production OCR engine to be integrated in Phase 2.
@@ -85,3 +95,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  clamav_db:

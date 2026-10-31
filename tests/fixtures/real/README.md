@@ -34,3 +34,4 @@ python scripts/evaluate_real_set.py \
   --labels-file tests/fixtures/real/labels.jsonl \
   --docs-dir tests/fixtures/real/
 ```
+

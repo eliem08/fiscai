@@ -199,6 +199,87 @@ def test_exact_duplicate_document_resubmitted_returns_200(db_conn: psycopg.Conne
         assert audit_row[2]["sha256"] == sha256
 
 
+def test_same_file_different_client_entities_creates_two_separate_documents(db_conn: psycopg.Connection):
+    """Uploading the exact same file for client A and client B in one tenant
+    creates two separate documents; neither response reveals the other's id.
+    Exact duplicate scope is (tenant_id, client_entity_id, sha256).
+    """
+    client = TestClient(app)
+    tenant_id = seed_tenant(db_conn, "Cabinet Multiclient Ingestion")
+    sub = f"accountant-{uuid.uuid4()}"
+    user_id = seed_user(db_conn, identity_subject=sub, email=f"{sub}@avenel.ma")
+    seed_membership(db_conn, user_id, tenant_id, "accountant")
+    set_rls_context(db_conn, tenant_id, user_id)
+
+    client_a_id = create_client_entity(db_conn, tenant_id, "Client Alpha SARL", actor_id=str(user_id)).id
+    client_b_id = create_client_entity(db_conn, tenant_id, "Client Beta SARL", actor_id=str(user_id)).id
+
+    p_a_id = open_accounting_period(
+        db_conn,
+        tenant_id,
+        client_a_id,
+        actor_id=str(user_id),
+        period_code="2026-03",
+        starts_on=datetime.date(2026, 3, 1),
+        ends_on=datetime.date(2026, 3, 31),
+        fiscal_year_end=datetime.date(2026, 12, 31),
+    )["id"]
+    p_b_id = open_accounting_period(
+        db_conn,
+        tenant_id,
+        client_b_id,
+        actor_id=str(user_id),
+        period_code="2026-03",
+        starts_on=datetime.date(2026, 3, 1),
+        ends_on=datetime.date(2026, 3, 31),
+        fiscal_year_end=datetime.date(2026, 12, 31),
+    )["id"]
+
+    wr_a_id = _seed_work_request(db_conn, tenant_id, client_a_id, p_a_id)
+    wr_b_id = _seed_work_request(db_conn, tenant_id, client_b_id, p_b_id)
+
+    shared_content = b"%PDF-1.4 Identical Shared Supplier Invoice Content"
+    content_sha256 = hashlib.sha256(shared_content).hexdigest()
+
+    # Upload for Client A -> 201 Created
+    headers_a = _auth_headers(sub, tenant_id)
+    res_a = client.post(
+        f"/v1/work-requests/{wr_a_id}/uploads",
+        headers=headers_a,
+        json={
+            "original_filename": "shared_invoice.pdf",
+            "byte_size": len(shared_content),
+            "mime_type": "application/pdf",
+            "sha256": content_sha256,
+        },
+    )
+    assert res_a.status_code == 201
+    doc_a_id = res_a.json()["document_id"]
+    assert res_a.json()["resubmitted"] is False
+
+    # Upload identical file for Client B -> 201 Created (NOT 200 duplicate, NOT 409)
+    headers_b = _auth_headers(sub, tenant_id)
+    headers_b["Idempotency-Key"] = f"idemp-{uuid.uuid4()}"
+    res_b = client.post(
+        f"/v1/work-requests/{wr_b_id}/uploads",
+        headers=headers_b,
+        json={
+            "original_filename": "shared_invoice.pdf",
+            "byte_size": len(shared_content),
+            "mime_type": "application/pdf",
+            "sha256": content_sha256,
+        },
+    )
+    assert res_b.status_code == 201
+    doc_b_id = res_b.json()["document_id"]
+    assert res_b.json()["resubmitted"] is False
+
+    # Separate documents created; neither response reveals the other's id
+    assert doc_a_id != doc_b_id
+    assert doc_b_id not in json.dumps(res_a.json())
+    assert doc_a_id not in json.dumps(res_b.json())
+
+
 def test_malware_quarantined_with_immutable_evidence(db_conn: psycopg.Connection):
     """Files containing EICAR test signature are quarantined with an append-only evidence record."""
     client = TestClient(app)

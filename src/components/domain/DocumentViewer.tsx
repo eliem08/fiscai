@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Check, AlertCircle, FileText } from 'lucide-react';
+import { toast } from '@/store/toastStore';
 
 export interface FieldExtraction {
   value: string | number | null;
@@ -102,6 +103,7 @@ export function DocumentViewer({
           confirmed: true,
         },
       }));
+      toast('success', 'Champ confirmé');
       // Advance to next unconfirmed field
       const fieldKeys = Object.keys(FIELD_LABELS);
       const currentIndex = fieldKeys.indexOf(fieldName);
@@ -120,6 +122,7 @@ export function DocumentViewer({
         confirmed: true,
       },
     }));
+    toast('success', 'Champ confirmé');
   };
 
   const handleSaveChanges = async () => {
@@ -263,15 +266,15 @@ export function DocumentViewer({
                 <div className="border-t border-line pt-4 flex flex-col items-end space-y-1 text-right">
                   <div className="flex justify-between w-48 text-xs">
                     <span className="text-ink-2">Total HT:</span>
-                    <span className="font-medium">{String(fields.total_ht?.value || '1000.00')} MAD</span>
+                    <span className="font-medium">{fields.total_ht?.value ? `${fields.total_ht.value} MAD` : '—'}</span>
                   </div>
                   <div className="flex justify-between w-48 text-xs">
-                    <span className="text-ink-2">Total TVA (20%):</span>
-                    <span className="font-medium">{String(fields.total_vat?.value || '200.00')} MAD</span>
+                    <span className="text-ink-2">Total TVA:</span>
+                    <span className="font-medium">{fields.total_vat?.value ? `${fields.total_vat.value} MAD` : '—'}</span>
                   </div>
                   <div className="flex justify-between w-48 text-sm font-bold border-t border-line pt-1 text-ink">
                     <span>Total TTC:</span>
-                    <span>{String(fields.total_ttc?.value || '1200.00')} MAD</span>
+                    <span>{fields.total_ttc?.value ? `${fields.total_ttc.value} MAD` : '—'}</span>
                   </div>
                 </div>
               </div>
@@ -344,19 +347,28 @@ export function DocumentViewer({
                           Confirmé
                         </span>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleConfirmField(key)}
-                          className="flex items-center gap-1 text-[11px] text-pink-ink font-medium hover:underline"
-                          title="Cliquer ou appuyer sur Entrée pour confirmer"
-                        >
-                          {/* 8px pink dot per Part E */}
+                        <div className="flex items-center gap-2">
                           <span
-                            data-testid="unconfirmed-marker"
-                            className="w-2 h-2 rounded-full bg-pink inline-block"
-                          />
-                          à confirmer
-                        </button>
+                            className="flex items-center gap-1 text-[11px] text-pink-ink font-medium select-none"
+                            title="Champ à confirmer par l'opérateur"
+                          >
+                            {/* 8px pink dot per Part E */}
+                            <span
+                              data-testid="unconfirmed-marker"
+                              className="w-2 h-2 rounded-full bg-pink inline-block"
+                            />
+                            à confirmer
+                          </span>
+                          <button
+                            type="button"
+                            data-testid={`confirm-btn-${key}`}
+                            onClick={() => handleConfirmField(key)}
+                            className="px-2 py-0.5 rounded text-[11px] font-heading font-medium bg-sky text-ink hover:bg-sky/90 transition-colors"
+                            title="Confirmer la valeur du champ"
+                          >
+                            Confirmer
+                          </button>
+                        </div>
                       )}
                     </div>
 
