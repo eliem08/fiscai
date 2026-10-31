@@ -11,12 +11,14 @@ from fastapi.responses import JSONResponse
 
 from apps.api.middleware import IdempotencyMiddleware
 from apps.api.routes import (
+    bank,
     chart,
     clients,
     compliance,
     documents,
     periods,
     proposals,
+    reconciliation,
     session,
     work_requests,
 )
@@ -127,3 +129,6 @@ app.include_router(compliance.router)
 app.include_router(work_requests.router)
 app.include_router(documents.router)
 app.include_router(proposals.router)
+app.include_router(bank.router)
+app.include_router(bank.statements_router)
+app.include_router(reconciliation.router)

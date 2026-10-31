@@ -40,9 +40,9 @@
   value: true
   effective_from: "2015-01-01"
   effective_to: null
-  source: "Loi n° 114-13 / CGI art. 89"
-  status: "verified"
-  note: "Les auto-entrepreneurs sont hors champ d'application de la TVA et ne peuvent pas facturer de TVA"
+  source: "Loi n° 114-13 / CGI art. 91 vs 89 to be confirmed"
+  status: "needs_expert"
+  note: "TODO(EXPERT): Les auto-entrepreneurs ne peuvent pas facturer de TVA (CGI art. 91 vs 89 à confirmer par expert)"
 
 - key: "invoice.duplicate_window_days"
   value: 20
@@ -58,5 +58,53 @@
   effective_to: null
   source: "CGNC / Pratique fiduciaire"
   status: "needs_expert"
-  note: "TODO(EXPERT): Compte d'imputation par défaut des centimes d'arrondi de conversion de devises (direction rounding)"
+  note: "TODO(EXPERT): Compte d'imputation de secours des centimes d'arrondi (CGNC 6588 vs 6331/7331 à confirmer)"
+
+- key: "accounting.fx_rounding.loss_account"
+  value: "6331"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGNC — Pertes de change propres à l'exercice"
+  status: "needs_expert"
+  note: "TODO(EXPERT): Compte suggéré par défaut pour perte sur arrondi de change (6331 vs 6588)"
+
+- key: "accounting.fx_rounding.gain_account"
+  value: "7331"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGNC — Gains de change propres à l'exercice"
+  status: "needs_expert"
+  note: "TODO(EXPERT): Compte suggéré par défaut pour gain sur arrondi de change (7331 vs 7588)"
+
+- key: "accounting.suggestion.confidence_threshold"
+  value: 0.75
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product / Part H quality gate"
+  status: "verified"
+  note: "Seuil de confiance minimale pour l'imputation automatique sans anomalie"
+
+- key: "bank.reconciliation.threshold"
+  value: 0.97
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product / ARCHITECTURE.md D.7"
+  status: "verified"
+  note: "Seuil de pré-sélection d'un rapprochement bancaire unitaire exact"
+
+- key: "bank.reconciliation.date_window_days"
+  value: 60
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product / ARCHITECTURE.md D.7"
+  status: "verified"
+  note: "Fenêtre temporelle maximale pour génération des candidats de rapprochement"
+
+- key: "bank.statement.balance_tolerance"
+  value: 0.005
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGNC / BAM"
+  status: "verified"
+  note: "Tolérance arithmétique pour contrôle du solde de relevé bancaire"
 

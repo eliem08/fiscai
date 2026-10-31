@@ -146,8 +146,8 @@ def test_hypothesis_every_proposal_balances_and_has_evidence(
 
     # Invariant 2: Evidence validity and database line constraints
     for line in entry.lines:
-        # Rounding adjustment line (6588) may have empty evidence
-        if line.account_code != "6588":
+        # Rounding adjustment lines (6331 loss, 7331 gain, 6588 residual) may have empty evidence
+        if line.account_code not in ("6331", "7331", "6588"):
             assert len(line.evidence_refs) > 0, f"Line #{line.line_no} ({line.account_code}) missing evidence"
             for ev in line.evidence_refs:
                 assert "document_id" in ev, "Evidence must reference source document_id"

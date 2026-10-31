@@ -77,7 +77,7 @@ def _render_fixture_to_image(fixture: DocumentFixture, width: int = 800, height:
     font = _get_font(18)
 
     text = fixture.raw_content.decode("utf-8", errors="ignore")
-    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
     y = 50
     for line in lines:
         if font:

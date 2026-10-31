@@ -492,7 +492,7 @@ def run_extractor(
     agent_input = {
         "doc_type": doc_type,
         "full_text": ocr.full_text,
-        "lines": [l.text for l in ocr.lines],
+        "lines": [ln.text for ln in ocr.lines],
         "words": [w.text for w in ocr.words],
     }
     jsonschema.validate(instance=agent_input, schema=EXTRACTOR_INPUT_SCHEMA)

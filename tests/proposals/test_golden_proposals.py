@@ -8,10 +8,10 @@ Verifies:
 5. Sales Credit Note (Avoir Client reversing sale)
 6. Fixed Asset Acquisition (Immobilisation, 2355 + 34551 + 4481)
 7. Foreign Currency Invoice (EUR with BAM fixing rate)
-8. Non-deductible VAT by cash limit (CGI art. 106-II, VAT added to charge account)
-9. Non-deductible VAT by nature (CGI art. 106-I, VAT added to charge account)
+8. Non-deductible VAT by cash limit (vat.deduction.cash_limit.daily, VAT added to charge account)
+9. Non-deductible VAT by nature (vat.deduction.exclusions_by_nature, VAT added to charge account)
 10. Auto-entrepreneur supplier (no VAT lines, full TTC to charge)
-11. Prorata deduction using client_entities.vat_prorata (CGI art. 104)
+11. Prorata deduction using client_entities.vat_prorata (vat.deduction.prorata)
 12. EUR invoice with residual cents (residual posted to explicit rounding line, counterparty unchanged)
 13. Evidence refs validation (line with only rule refs rejected)
 14. Missing approved tax mapping raises ACCOUNT_UNMAPPED (blocking)
@@ -26,7 +26,9 @@ import psycopg
 import pytest
 
 from avenel.clients.service import create_client_entity
+from avenel.extraction.validation import validate_invoice_extraction
 from avenel.periods.service import open_accounting_period
+from avenel.proposals.account_suggester import suggest_accounts
 from avenel.proposals.entry_builder import (
     ProposalGenerationBlockedError,
     build_journal_proposal,
@@ -383,9 +385,9 @@ def test_golden_fixed_asset_acquisition(db_conn: psycopg.Connection, proposal_te
 
 
 def test_golden_non_deductible_vat_by_cash_limit(db_conn: psycopg.Connection, proposal_test_env: dict):
-    """8. Golden test: Non-deductible VAT by cash limit (VAT added to charge account).
+    """8. Golden test: Non-deductible VAT by cash limit (rule vat.deduction.cash_limit.daily).
 
-    CGI art. 106-II: Cash payment exceeding daily cash limit (5 000 MAD) makes VAT non-deductible.
+    Cash payment exceeding daily cash limit (vat.deduction.cash_limit.daily) makes VAT non-deductible.
     VAT is added to the charge account (6111), no VAT line is generated, and issue VAT_NOT_DEDUCTIBLE_CASH_LIMIT is flagged.
     """
     tenant_id = proposal_test_env["tenant_id"]
@@ -434,9 +436,9 @@ def test_golden_non_deductible_vat_by_cash_limit(db_conn: psycopg.Connection, pr
 
 
 def test_golden_non_deductible_vat_by_nature(db_conn: psycopg.Connection, proposal_test_env: dict):
-    """9. Golden test: Non-deductible VAT by nature (VAT added to charge account).
+    """9. Golden test: Non-deductible VAT by nature (rule vat.deduction.exclusions_by_nature).
 
-    CGI art. 106-I: Non-deductible expense natures (e.g. passenger vehicles, gifts).
+    Non-deductible expense natures defined by vat.deduction.exclusions_by_nature (e.g. passenger vehicles, gifts).
     VAT is added to the charge account, no VAT line is generated, issue VAT_NOT_DEDUCTIBLE_BY_NATURE is flagged.
     """
     tenant_id = proposal_test_env["tenant_id"]
@@ -479,9 +481,9 @@ def test_golden_non_deductible_vat_by_nature(db_conn: psycopg.Connection, propos
 
 
 def test_golden_auto_entrepreneur_supplier_no_vat_lines(db_conn: psycopg.Connection, proposal_test_env: dict):
-    """10. Golden test: Auto-entrepreneur supplier (no VAT lines).
+    """10. Golden test: Auto-entrepreneur supplier (rule invoice.auto_entrepreneur.vat_forbidden).
 
-    Loi 114-13 / CGI art. 89: Auto-entrepreneurs cannot charge VAT.
+    Under rule invoice.auto_entrepreneur.vat_forbidden, auto-entrepreneurs cannot charge VAT.
     Full TTC is debited to the charge account, no VAT lines, issue VAT_ON_AUTO_ENTREPRENEUR_INVOICE is flagged if VAT was stated.
     """
     tenant_id = proposal_test_env["tenant_id"]
@@ -525,7 +527,7 @@ def test_golden_auto_entrepreneur_supplier_no_vat_lines(db_conn: psycopg.Connect
 def test_golden_prorata_deduction_using_client_entities_vat_prorata(
     db_conn: psycopg.Connection, proposal_test_env: dict
 ):
-    """11. Golden test: Prorata deduction using client_entities.vat_prorata (CGI art. 104).
+    """11. Golden test: Prorata deduction using client_entities.vat_prorata (rule vat.deduction.prorata).
 
     When client entity has vat_prorata = 0.80 (80%):
     Deductible VAT = 2 000 * 0.80 = 1 600 MAD (debited to 34552).
@@ -647,7 +649,7 @@ def test_golden_foreign_currency_eur_with_residual(db_conn: psycopg.Connection, 
     charge_line = next(l for l in entry.lines if l.account_code == "6111")
     vat_line = next(l for l in entry.lines if l.account_code == "34552")
     cp_line = next(l for l in entry.lines if l.account_code == "4411")
-    rounding_line = next(l for l in entry.lines if l.account_code == "6588")
+    rounding_line = next(l for l in entry.lines if l.account_code == "6331")
 
     assert charge_line.debit_mad == 1085.77
     assert vat_line.debit_mad == 217.15
@@ -745,3 +747,173 @@ def test_missing_fx_rate_raises_fx_rate_missing(db_conn: psycopg.Connection, pro
             actor_id=str(user_id),
         )
     assert exc_info.value.code == "FX_RATE_MISSING"
+
+
+def test_golden_foreign_currency_eur_with_negative_residual_credited_to_gain_account(
+    db_conn: psycopg.Connection, proposal_test_env: dict
+):
+    """16. Phase 4 Item 1: Golden test with negative residual credited to rounding_gain account.
+
+    rate=10.0067, HT=100.75 EUR, TVA=20.15 EUR, TTC=120.90 EUR.
+    Debits: HT converted = 1008.18 MAD, TVA converted = 201.64 MAD -> Sum debits = 1209.82 MAD.
+    Credits: Counterparty = 120.90 * 10.0067 = 1209.81 MAD.
+    Residual: 0.01 MAD debits excess -> Credited to rounding_gain (7331) to balance.
+    """
+    tenant_id = proposal_test_env["tenant_id"]
+    client_id = proposal_test_env["client_id"]
+    user_id = proposal_test_env["user_id"]
+    doc_id = uuid.uuid4()
+
+    record_fx_rate(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        rate_date=datetime.date(2026, 3, 21),
+        currency="EUR",
+        rate=10.0067,
+        source="bam_fixing",
+        created_by=user_id,
+    )
+
+    mock_extracted = {
+        "invoice_number": {"value": "EUR-GAIN-01", "page": 1},
+        "invoice_date": {"value": "2026-03-21", "page": 1},
+        "supplier_name": {"value": "Hosting International SAS", "page": 1},
+        "supplier_ice": {"value": "000000000000000", "page": 1},
+        "currency": {"value": "EUR"},
+        "total_ht": {"value": 100.75, "page": 1, "bbox": [0.6, 0.7, 0.9, 0.75]},
+        "total_vat": {"value": 20.15, "page": 1, "bbox": [0.6, 0.76, 0.9, 0.8]},
+        "total_ttc": {"value": 120.90, "page": 1, "bbox": [0.6, 0.81, 0.9, 0.85]},
+    }
+
+    entry = build_journal_proposal(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        client_entity_id=client_id,
+        document_id=doc_id,
+        doc_type="invoice_purchase",
+        extracted_fields=mock_extracted,
+        actor_id=str(user_id),
+    )
+
+    assert len(entry.lines) == 4
+
+    charge_line = next(l for l in entry.lines if l.account_code == "6111")
+    vat_line = next(l for l in entry.lines if l.account_code == "34552")
+    cp_line = next(l for l in entry.lines if l.account_code == "4411")
+    gain_line = next(l for l in entry.lines if l.account_code == "7331")
+
+    assert charge_line.debit_mad == 1008.18
+    assert vat_line.debit_mad == 201.64
+
+    # Counterparty line strictly equals invoice TTC converted at stated rate (1209.81 MAD)
+    assert cp_line.credit_mad == 1209.81
+
+    # Rounding gain credited 0.01 MAD
+    assert gain_line.debit_mad == 0.00
+    assert gain_line.credit_mad == 0.01
+    assert gain_line.currency == "MAD"
+
+    # Perfect balance
+    assert sum(l.debit_mad for l in entry.lines) == sum(l.credit_mad for l in entry.lines)
+    assert sum(l.debit_mad for l in entry.lines) == 1209.82
+
+
+def test_multi_rate_14_percent_accepted_in_2025():
+    """17. Phase 4 Item 2: 14% rate dated 2025-12-31 accepted without VAT_RATE_UNKNOWN."""
+    fields = {
+        "invoice_number": "FAC-2025-1234",
+        "invoice_date": "2025-12-31",
+        "supplier_ice": "001234567890123",
+        "supplier_if": "12345678",
+        "total_ht": 1000.0,
+        "total_vat": 140.0,
+        "total_ttc": 1140.0,
+        "tax_breakdown": [{"rate": 0.14, "base_ht": 1000.0, "tax_amount": 140.0}],
+    }
+    report = validate_invoice_extraction(fields)
+    assert not any(i.code == "VAT_RATE_UNKNOWN" for i in report.issues)
+
+
+def test_multi_rate_14_percent_rejected_in_2026():
+    """18. Phase 4 Item 2: 14% rate dated 2026-01-01 raises VAT_RATE_UNKNOWN (blocking)."""
+    fields = {
+        "invoice_number": "FAC-2026-0001",
+        "invoice_date": "2026-01-01",
+        "supplier_ice": "001234567890123",
+        "supplier_if": "12345678",
+        "total_ht": 1000.0,
+        "total_vat": 140.0,
+        "total_ttc": 1140.0,
+        "tax_breakdown": [{"rate": 0.14, "base_ht": 1000.0, "tax_amount": 140.0}],
+    }
+    report = validate_invoice_extraction(fields)
+    unknown_issues = [i for i in report.issues if i.code == "VAT_RATE_UNKNOWN"]
+    assert len(unknown_issues) >= 1
+    assert unknown_issues[0].severity == "blocking"
+
+
+def test_account_suggester_ma_only_without_local_model_falls_back_to_counterparty_history(
+    db_conn: psycopg.Connection, proposal_test_env: dict
+):
+    """19. Phase 4 Item 4: Under MA_ONLY without local model, LLM call is refused and falls back safely."""
+    tenant_id = proposal_test_env["tenant_id"]
+    client_id = proposal_test_env["client_id"]
+
+    # Enforce MA_ONLY residency policy on tenant
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "UPDATE tenants SET data_residency_policy = 'MA_ONLY' WHERE id = %s;",
+            (tenant_id,),
+        )
+
+    # Calling suggest_accounts with use_llm=True
+    suggestions = suggest_accounts(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        client_entity_id=client_id,
+        doc_type="invoice_purchase",
+        counterparty_ice="001234567890123",
+        counterparty_name="Fournisseur Local SARL",
+        description="Achat fournitures de bureau",
+        use_llm=True,
+    )
+    assert len(suggestions) >= 1
+    # Successfully fell back to rule-based / CGNC suggestion
+    assert suggestions[0].account_code in ("6111", "6125", "6181", "2351")
+
+
+def test_account_suggester_low_confidence_raises_account_low_confidence_issue(
+    db_conn: psycopg.Connection, proposal_test_env: dict
+):
+    """20. Phase 4 Item 4: Account suggestion confidence below pack threshold raises ACCOUNT_LOW_CONFIDENCE."""
+    tenant_id = proposal_test_env["tenant_id"]
+    client_id = proposal_test_env["client_id"]
+    user_id = proposal_test_env["user_id"]
+
+    mock_extracted = {
+        "invoice_number": {"value": "LOW-CONF-01", "page": 1},
+        "invoice_date": {"value": "2026-03-15", "page": 1},
+        "supplier_name": {"value": "Fournisseur Inconnu X", "page": 1},
+        "currency": {"value": "MAD"},
+        "total_ht": {"value": 1000.00, "page": 1, "bbox": [0.1, 0.1, 0.3, 0.15]},
+        "total_vat": {"value": 200.00, "page": 1, "bbox": [0.1, 0.16, 0.3, 0.2]},
+        "total_ttc": {"value": 1200.00, "page": 1, "bbox": [0.1, 0.21, 0.3, 0.25]},
+        # Line item description that matches low confidence rule (e.g. 0.60)
+        "line_items": {"value": "divers services speciaux"},
+    }
+
+    entry = build_journal_proposal(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        client_entity_id=client_id,
+        document_id=uuid.uuid4(),
+        doc_type="invoice_purchase",
+        extracted_fields=mock_extracted,
+        actor_id=str(user_id),
+    )
+
+    # If top suggestion confidence < 0.75, entry must contain ACCOUNT_LOW_CONFIDENCE review issue
+    low_conf_issues = [i for i in entry.detected_issues if i.get("code") == "ACCOUNT_LOW_CONFIDENCE"]
+    assert len(low_conf_issues) >= 1
+    assert low_conf_issues[0]["severity"] == "review"
+

@@ -45,14 +45,14 @@ class ProposalUnbalancedError(Exception):
 def _compute_proposal_content_hash(lines: list[dict[str, Any]]) -> str:
     """Computes a deterministic SHA-256 hash across proposal lines."""
     canonical_items = []
-    for l in sorted(lines, key=lambda x: int(x.get("line_no", 0))):
+    for line_item in sorted(lines, key=lambda x: int(x.get("line_no", 0))):
         canonical_items.append({
-            "line_no": l.get("line_no"),
-            "account_code": l.get("account_code"),
-            "debit_mad": f"{float(l.get('debit_mad', 0.0)):.2f}",
-            "credit_mad": f"{float(l.get('credit_mad', 0.0)):.2f}",
-            "currency": l.get("currency", "MAD"),
-            "label": l.get("label", ""),
+            "line_no": line_item.get("line_no"),
+            "account_code": line_item.get("account_code"),
+            "debit_mad": f"{float(line_item.get('debit_mad', 0.0)):.2f}",
+            "credit_mad": f"{float(line_item.get('credit_mad', 0.0)):.2f}",
+            "currency": line_item.get("currency", "MAD"),
+            "label": line_item.get("label", ""),
         })
     raw_str = json.dumps(canonical_items, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw_str.encode("utf-8")).hexdigest()
@@ -186,24 +186,24 @@ def generate_and_save_proposal_for_document(
     proposal_id = uuid.uuid4()
     lines_dicts = [
         {
-            "line_no": l.line_no,
-            "account_id": l.account_id,
-            "account_code": l.account_code,
-            "counterparty_id": l.counterparty_id,
-            "label": l.label,
-            "currency": l.currency,
-            "debit_tx": l.debit_tx,
-            "credit_tx": l.credit_tx,
-            "fx_rate": l.fx_rate,
-            "fx_rate_date": l.fx_rate_date,
-            "fx_source": l.fx_source,
-            "debit_mad": l.debit_mad,
-            "credit_mad": l.credit_mad,
-            "tax_code": l.tax_code,
-            "due_date": l.due_date,
-            "evidence_refs": l.evidence_refs,
+            "line_no": line.line_no,
+            "account_id": line.account_id,
+            "account_code": line.account_code,
+            "counterparty_id": line.counterparty_id,
+            "label": line.label,
+            "currency": line.currency,
+            "debit_tx": line.debit_tx,
+            "credit_tx": line.credit_tx,
+            "fx_rate": line.fx_rate,
+            "fx_rate_date": line.fx_rate_date,
+            "fx_source": line.fx_source,
+            "debit_mad": line.debit_mad,
+            "credit_mad": line.credit_mad,
+            "tax_code": line.tax_code,
+            "due_date": line.due_date,
+            "evidence_refs": line.evidence_refs,
         }
-        for l in entry.lines
+        for line in entry.lines
     ]
 
     content_hash = _compute_proposal_content_hash(lines_dicts)
@@ -236,7 +236,7 @@ def generate_and_save_proposal_for_document(
             ),
         )
 
-        for l in lines_dicts:
+        for line_data in lines_dicts:
             line_id = uuid.uuid4()
             cur.execute(
                 """
@@ -257,22 +257,22 @@ def generate_and_save_proposal_for_document(
                     tenant_id,
                     client_entity_id,
                     proposal_id,
-                    l["line_no"],
-                    l["account_id"],
-                    l["account_code"],
-                    l["counterparty_id"],
-                    l["label"],
-                    l["currency"],
-                    l["debit_tx"],
-                    l["credit_tx"],
-                    l["fx_rate"],
-                    l["fx_rate_date"],
-                    l["fx_source"],
-                    l["debit_mad"],
-                    l["credit_mad"],
-                    l["tax_code"],
-                    l["due_date"],
-                    json.dumps(l["evidence_refs"]),
+                    line_data["line_no"],
+                    line_data["account_id"],
+                    line_data["account_code"],
+                    line_data["counterparty_id"],
+                    line_data["label"],
+                    line_data["currency"],
+                    line_data["debit_tx"],
+                    line_data["credit_tx"],
+                    line_data["fx_rate"],
+                    line_data["fx_rate_date"],
+                    line_data["fx_source"],
+                    line_data["debit_mad"],
+                    line_data["credit_mad"],
+                    line_data["tax_code"],
+                    line_data["due_date"],
+                    json.dumps(line_data["evidence_refs"]),
                 ),
             )
 
@@ -405,16 +405,16 @@ def create_proposal_revision(
         )
 
     # Verify arithmetic balance on new lines
-    total_debit = round(sum(float(l.get("debit_mad", 0.0)) for l in updated_lines), 2)
-    total_credit = round(sum(float(l.get("credit_mad", 0.0)) for l in updated_lines), 2)
+    total_debit = round(sum(float(line.get("debit_mad", 0.0)) for line in updated_lines), 2)
+    total_credit = round(sum(float(line.get("credit_mad", 0.0)) for line in updated_lines), 2)
     if total_debit != total_credit or len(updated_lines) < 2:
         raise ProposalUnbalancedError(
             f"Les écritures ne sont pas équilibrées : débit={total_debit:.2f}, crédit={total_credit:.2f}"
         )
 
     # Validate evidence refs on updated lines
-    for l in updated_lines:
-        evs = l.get("evidence_refs", [])
+    for line in updated_lines:
+        evs = line.get("evidence_refs", [])
         validate_line_evidence_refs(evs)
 
     new_proposal_id = uuid.uuid4()
@@ -464,7 +464,7 @@ def create_proposal_revision(
         )
 
         # 3. Insert new lines
-        for idx, l in enumerate(updated_lines, start=1):
+        for idx, line_item in enumerate(updated_lines, start=1):
             line_id = uuid.uuid4()
             cur.execute(
                 """
@@ -486,21 +486,21 @@ def create_proposal_revision(
                     uuid.UUID(current["client_entity_id"]),
                     new_proposal_id,
                     idx,
-                    uuid.UUID(str(l["account_id"])),
-                    str(l["account_code"]),
-                    uuid.UUID(str(l["counterparty_id"])) if l.get("counterparty_id") else None,
-                    str(l["label"]),
-                    str(l.get("currency", "MAD")),
-                    float(l.get("debit_tx", l.get("debit_mad", 0.0))),
-                    float(l.get("credit_tx", l.get("credit_mad", 0.0))),
-                    float(l.get("fx_rate", 1.0)),
-                    l.get("fx_rate_date"),
-                    l.get("fx_source"),
-                    float(l["debit_mad"]),
-                    float(l["credit_mad"]),
-                    l.get("tax_code"),
-                    l.get("due_date"),
-                    json.dumps(l.get("evidence_refs", [])),
+                    uuid.UUID(str(line_item["account_id"])),
+                    str(line_item["account_code"]),
+                    uuid.UUID(str(line_item["counterparty_id"])) if line_item.get("counterparty_id") else None,
+                    str(line_item["label"]),
+                    str(line_item.get("currency", "MAD")),
+                    float(line_item.get("debit_tx", line_item.get("debit_mad", 0.0))),
+                    float(line_item.get("credit_tx", line_item.get("credit_mad", 0.0))),
+                    float(line_item.get("fx_rate", 1.0)),
+                    line_item.get("fx_rate_date"),
+                    line_item.get("fx_source"),
+                    float(line_item["debit_mad"]),
+                    float(line_item["credit_mad"]),
+                    line_item.get("tax_code"),
+                    line_item.get("due_date"),
+                    json.dumps(line_item.get("evidence_refs", [])),
                 ),
             )
 

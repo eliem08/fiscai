@@ -44,7 +44,7 @@ def compute_proposal_set_hash(
     for prop in sorted(proposals, key=lambda p: str(p.get("id", ""))):
         prop_copy = dict(prop)
         lines = prop_copy.get("lines", [])
-        sorted_lines = sorted(lines, key=lambda l: int(l.get("line_no", 0)))
+        sorted_lines = sorted(lines, key=lambda line_item: int(line_item.get("line_no", 0)))
         prop_copy["lines"] = sorted_lines
         sorted_proposals.append(prop_copy)
 

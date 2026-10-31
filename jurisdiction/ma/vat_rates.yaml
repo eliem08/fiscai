@@ -14,6 +14,14 @@
   status: "verified"
   note: "Taux réduit de 10%"
 
+- key: "vat.rate.reduced_14"
+  value: 0.14
+  effective_from: "2024-01-01"
+  effective_to: "2025-12-31"
+  source: "Loi de Finances 2024 / CGI transition"
+  status: "verified"
+  note: "Taux réduit transitoire de 14% applicable jusqu'au 31/12/2025"
+
 - key: "vat.rate.mapping_items"
   value: null
   effective_from: "2026-01-01"

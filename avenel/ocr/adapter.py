@@ -55,7 +55,7 @@ class OcrResult:
             "engine": self.engine,
             "engine_version": self.engine_version,
             "detected_script": self.detected_script,
-            "lines": [asdict(l) for l in self.lines],
+            "lines": [asdict(line) for line in self.lines],
             "words": [asdict(w) for w in self.words],
         }
 
@@ -110,7 +110,7 @@ def _render_text_to_image(text: str, width: int = 1000, height: int = 1400) -> I
     """Renders text onto a raster canvas for OCR processing."""
     img = Image.new("RGB", (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(img)
-    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
     y = 80
     for line in lines:
         draw.text((80, y), line, fill=(0, 0, 0))
@@ -330,7 +330,7 @@ class LocalOcrEngine:
                     )
                 )
 
-        full_text = "\n".join(l.text for l in all_lines)
+        full_text = "\n".join(line.text for line in all_lines)
         detected_doc_script = "mixed" if "mixed" in overall_scripts or ("arabic" in overall_scripts and "latin" in overall_scripts) else (
             "arabic" if "arabic" in overall_scripts else "latin"
         )

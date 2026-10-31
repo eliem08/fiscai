@@ -251,7 +251,7 @@ Total TTC: {ttc_val:.2f} MAD
         if i <= 10:
             vat_val = 0.0
             ttc_val = ht_val
-            vat_clause = "Exonéré de TVA en vertu du statut d'Auto-entrepreneur (CGI art. 89)"
+            vat_clause = "Exonéré de TVA en vertu du statut d'Auto-entrepreneur (Loi 114-13)"
         else:
             vat_val = round(ht_val * std_rate, 2)
             ttc_val = round(ht_val + vat_val, 2)

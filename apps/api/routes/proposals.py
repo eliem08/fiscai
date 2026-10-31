@@ -180,7 +180,7 @@ async def update_proposal_endpoint(
         )
 
     try:
-        lines_data = [l.model_dump() for l in payload.lines]
+        lines_data = [line.model_dump() for line in payload.lines]
         new_rev = create_proposal_revision(
             conn=conn,
             tenant_id=session.tenant_id,

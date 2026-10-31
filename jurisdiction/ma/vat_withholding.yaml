@@ -26,3 +26,13 @@
   source: "CGNC / DGI"
   status: "needs_expert"
   note: "Specific ledger sub-accounts for VAT withheld at source need expert validation (Part I #3)"
+
+- key: "vat.withholding.rates"
+  value:
+    partial: 0.75
+    full: 1.00
+  effective_from: "2024-01-01"
+  effective_to: null
+  source: "Loi de Finances 2024 / CGI art. 117"
+  status: "verified"
+  note: "Taux légaux de retenue à la source de TVA : 75% ou 100%"

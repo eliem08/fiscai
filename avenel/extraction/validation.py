@@ -44,21 +44,41 @@ class ValidationReport:
 
 
 def get_known_vat_rates_for_date(invoice_date_str: str | None) -> list[float]:
-    """Retrieves verified Moroccan VAT rates from jurisdiction pack."""
+    """Retrieves verified Moroccan VAT rates from jurisdiction pack effective on invoice_date."""
     pack = get_jurisdiction_pack()
     rates: list[float] = []
 
-    std_rule = pack.get_rule("vat.rate.standard")
-    if std_rule and std_rule.get("status") == "verified" and std_rule.get("value") is not None:
-        rates.append(float(std_rule["value"]))
+    target_date: datetime.date | None = None
+    if invoice_date_str:
+        try:
+            target_date = datetime.date.fromisoformat(str(invoice_date_str).strip())
+        except (ValueError, TypeError):
+            target_date = None
 
-    red_rule = pack.get_rule("vat.rate.reduced_10")
-    if red_rule and red_rule.get("status") == "verified" and red_rule.get("value") is not None:
-        rates.append(float(red_rule["value"]))
+    for rule_key, rule in pack.rules.items():
+        if not rule_key.startswith("vat.rate.") or rule_key == "vat.rate.mapping_items":
+            continue
+        if rule.get("status") != "verified" or rule.get("value") is None:
+            continue
+        try:
+            val = float(rule["value"])
+        except (ValueError, TypeError):
+            continue
 
-    # Zero rate (exempted operations CGI art. 91, 92)
+        eff_from = rule.get("effective_from")
+        eff_to = rule.get("effective_to")
+
+        if target_date is not None:
+            if eff_from and target_date < datetime.date.fromisoformat(str(eff_from)):
+                continue
+            if eff_to and target_date > datetime.date.fromisoformat(str(eff_to)):
+                continue
+
+        rates.append(val)
+
+    # Zero rate (exempted operations per pack)
     rates.append(0.0)
-    return rates
+    return sorted(set(rates))
 
 
 def validate_invoice_extraction(
@@ -100,7 +120,7 @@ def validate_invoice_extraction(
                     code="INVOICE_MISSING_MANDATORY_FIELD",
                     severity=missing_severity,
                     title=f"Mention obligatoire manquante : {field_name}",
-                    details={"field": field_name, "rule": "CGI art. 145-III"},
+                    details={"field": field_name, "rule": "invoice.mandatory_mentions"},
                 )
             )
 
@@ -191,7 +211,7 @@ def validate_invoice_extraction(
                     "payment_method": "cash",
                     "total_ttc": tot_ttc,
                     "cash_limit": cash_limit,
-                    "rule": "CGI art. 106-II",
+                    "rule": "vat.deduction.cash_limit.daily",
                 },
             )
         )

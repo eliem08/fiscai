@@ -148,8 +148,11 @@ def convert_and_balance_lines(
     diff = total_debit_mad - total_credit_mad
     if diff != Decimal("0.00"):
         diff_float = abs(float(diff))
+        # diff < 0 means debits are short -> needs debit to balance -> loss
+        # diff > 0 means debits exceed credits -> needs credit to balance -> gain
+        direction = "rounding_loss" if diff < Decimal("0.00") else "rounding_gain"
         round_acc_id, round_acc_code, round_acc_label = resolve_rounding_account(
-            conn, tenant_id, client_entity_id
+            conn, tenant_id, client_entity_id, direction=direction
         )
 
         evidence = [default_evidence_ref] if default_evidence_ref else []

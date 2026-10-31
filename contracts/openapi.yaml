@@ -29,6 +29,10 @@ tags:
     description: Accounting proposal generation, revision, and approval operations
   - name: Issues
     description: Document and reconciliation exception management
+  - name: Bank
+    description: Bank account registration and statement ingestion operations
+  - name: Reconciliation
+    description: Bank reconciliation candidate generation and matching operations
 
 paths:
   /me:
@@ -786,6 +790,234 @@ paths:
         "422":
           $ref: "#/components/responses/ProblemDetails"
 
+  /bank-accounts:
+    get:
+      operationId: listBankAccounts
+      tags:
+        - Bank
+      summary: List client bank accounts
+      description: Returns all bank accounts registered for the specified client entity.
+      parameters:
+        - name: client_entity_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of bank accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BankAccountDetail"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+    post:
+      operationId: registerBankAccount
+      tags:
+        - Bank
+      summary: Register a new bank account with Moroccan RIB
+      description: Registers a new bank account after validating format and mod-97 check key.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBankAccountInput"
+      responses:
+        "201":
+          description: Created bank account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BankAccountDetail"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /bank-statements/upload:
+    post:
+      operationId: uploadBankStatement
+      tags:
+        - Bank
+      summary: Upload and parse bank statement
+      description: Ingests a bank statement (CSV/XLSX/PDF) with mathematical balance verification.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - client_entity_id
+                - bank_account_id
+                - file
+              properties:
+                client_entity_id:
+                  type: string
+                  format: uuid
+                bank_account_id:
+                  type: string
+                  format: uuid
+                work_request_id:
+                  type: [string, "null"]
+                  format: uuid
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Statement ingest summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BankStatementIngestResult"
+        "400":
+          $ref: "#/components/responses/ProblemDetails"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /reconciliation/matches:
+    get:
+      operationId: listReconciliationMatches
+      tags:
+        - Reconciliation
+      summary: List candidate and accepted reconciliation matches
+      description: Returns all reconciliation candidates and accepted matches for a work request.
+      parameters:
+        - name: work_request_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of reconciliation matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReconciliationMatchDetail"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /reconciliation/generate:
+    post:
+      operationId: generateReconciliationMatches
+      tags:
+        - Reconciliation
+      summary: Generate candidate matches
+      description: Generates deterministic candidate matches between bank transactions and journal proposals.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateMatchesInput"
+      responses:
+        "201":
+          description: List of generated match candidates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReconciliationMatchSummary"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /reconciliation/matches/{match_id}/accept:
+    post:
+      operationId: acceptReconciliationMatch
+      tags:
+        - Reconciliation
+      summary: Accept candidate match (enforces double-match prevention)
+      description: Accepts a reconciliation match and verifies no bank line belongs to two accepted matches.
+      parameters:
+        - name: match_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      responses:
+        "200":
+          description: Accepted match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationMatchSummary"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "409":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /reconciliation/matches/{match_id}/reject:
+    post:
+      operationId: rejectReconciliationMatch
+      tags:
+        - Reconciliation
+      summary: Reject candidate match
+      description: Rejects a candidate reconciliation match.
+      parameters:
+        - name: match_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      responses:
+        "200":
+          description: Rejected match
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                  - status
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [rejected]
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
 components:
   parameters:
     IdempotencyKeyHeader:
@@ -1465,5 +1697,183 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProposalLineInput"
+
+    BankAccountDetail:
+      type: object
+      required:
+        - id
+        - bank_code
+        - rib_last4
+        - currency
+        - journal_code
+        - ledger_account_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        bank_code:
+          type: string
+        rib_masked:
+          type: string
+        rib_last4:
+          type: string
+        currency:
+          type: string
+        journal_code:
+          type: string
+        ledger_account_id:
+          type: string
+          format: uuid
+
+    CreateBankAccountInput:
+      type: object
+      required:
+        - client_entity_id
+        - rib
+      properties:
+        client_entity_id:
+          type: string
+          format: uuid
+        rib:
+          type: string
+          description: Moroccan 24-digit RIB
+        currency:
+          type: string
+          default: MAD
+        journal_code:
+          type: string
+          default: BQ
+
+    BankStatementIngestResult:
+      type: object
+      required:
+        - statement_id
+        - balance_check
+        - opening_balance
+        - closing_balance
+        - computed_closing
+        - difference
+        - transaction_count
+      properties:
+        statement_id:
+          type: string
+          format: uuid
+        balance_check:
+          type: string
+          enum: [ok, break, unknown]
+        opening_balance:
+          type: number
+        closing_balance:
+          type: number
+        computed_closing:
+          type: number
+        difference:
+          type: number
+        transaction_count:
+          type: integer
+        issue_id:
+          type: [string, "null"]
+          format: uuid
+
+    GenerateMatchesInput:
+      type: object
+      required:
+        - client_entity_id
+        - work_request_id
+      properties:
+        client_entity_id:
+          type: string
+          format: uuid
+        work_request_id:
+          type: string
+          format: uuid
+        date_window_days:
+          type: [integer, "null"]
+
+    ReconciliationMatchSummary:
+      type: object
+      required:
+        - id
+        - score
+        - difference_mad
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        score:
+          type: [number, "null"]
+        difference_mad:
+          type: number
+        difference_kind:
+          type: [string, "null"]
+        bank_transaction_id:
+          type: [string, "null"]
+          format: uuid
+        journal_proposal_id:
+          type: [string, "null"]
+          format: uuid
+
+    ReconciliationMatchItemDetail:
+      type: object
+      required:
+        - id
+        - amount_mad
+      properties:
+        id:
+          type: string
+          format: uuid
+        bank_transaction_id:
+          type: [string, "null"]
+          format: uuid
+        journal_proposal_id:
+          type: [string, "null"]
+          format: uuid
+        amount_mad:
+          type: number
+        bank_date:
+          type: [string, "null"]
+        bank_desc:
+          type: [string, "null"]
+        proposal_date:
+          type: [string, "null"]
+        proposal_label:
+          type: [string, "null"]
+
+    ReconciliationMatchDetail:
+      type: object
+      required:
+        - id
+        - status
+        - difference_mad
+        - reasons
+        - items
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [proposed, accepted, rejected, superseded]
+        score:
+          type: [number, "null"]
+        reasons:
+          type: array
+          items:
+            type: string
+        difference_mad:
+          type: number
+        difference_kind:
+          type: [string, "null"]
+        decided_by:
+          type: [string, "null"]
+          format: uuid
+        decided_at:
+          type: [string, "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconciliationMatchItemDetail"
 
 

@@ -9,6 +9,7 @@ Enforces:
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from dataclasses import dataclass
 
@@ -37,8 +38,8 @@ class ResolvedTaxAccount:
     rule_refs: list[str]
 
 
-def get_available_vat_rates() -> list[TaxRateInfo]:
-    """Loads all verified VAT rates from Moroccan jurisdiction pack."""
+def get_available_vat_rates(rate_date: datetime.date | None = None) -> list[TaxRateInfo]:
+    """Loads all verified VAT rates from Moroccan jurisdiction pack effective on rate_date."""
     pack = get_jurisdiction_pack()
     rates: list[TaxRateInfo] = []
 
@@ -49,7 +50,7 @@ def get_available_vat_rates() -> list[TaxRateInfo]:
                 code="STANDARD_20",
                 rate_value=float(standard_rule["value"]),
                 rule_key="vat.rate.standard",
-                source_citation=standard_rule.get("source", "CGI art. 99-A"),
+                source_citation=str(standard_rule.get("source") or ""),
                 label_fr=str(standard_rule.get("label", "Taux normal")),
             )
         )
@@ -61,17 +62,38 @@ def get_available_vat_rates() -> list[TaxRateInfo]:
                 code="REDUCED_10",
                 rate_value=float(reduced_rule["value"]),
                 rule_key="vat.rate.reduced_10",
-                source_citation=reduced_rule.get("source", "CGI art. 99-B"),
+                source_citation=str(reduced_rule.get("source") or ""),
                 label_fr=str(reduced_rule.get("label", "Taux réduit")),
             )
         )
 
+    reduced_14_rule = pack.get_rule("vat.rate.reduced_14")
+    if reduced_14_rule and reduced_14_rule.get("status") == "verified":
+        eff_from = reduced_14_rule.get("effective_from")
+        eff_to = reduced_14_rule.get("effective_to")
+        is_effective = True
+        if rate_date is not None:
+            if eff_from and rate_date < datetime.date.fromisoformat(str(eff_from)):
+                is_effective = False
+            if eff_to and rate_date > datetime.date.fromisoformat(str(eff_to)):
+                is_effective = False
+        if is_effective:
+            rates.append(
+                TaxRateInfo(
+                    code="REDUCED_14",
+                    rate_value=float(reduced_14_rule["value"]),
+                    rule_key="vat.rate.reduced_14",
+                    source_citation=str(reduced_14_rule.get("source") or ""),
+                    label_fr=str(reduced_14_rule.get("label", "Taux réduit transitoire")),
+                )
+            )
+
     return rates
 
 
-def match_vat_rate_to_pack(rate_fraction: float, tolerance: float = 0.005) -> TaxRateInfo | None:
+def match_vat_rate_to_pack(rate_fraction: float, rate_date: datetime.date | None = None, tolerance: float = 0.005) -> TaxRateInfo | None:
     """Matches an extracted or calculated VAT rate against verified pack rules."""
-    rates = get_available_vat_rates()
+    rates = get_available_vat_rates(rate_date)
     for r in rates:
         if abs(r.rate_value - rate_fraction) <= tolerance:
             return r
@@ -154,12 +176,32 @@ def resolve_rounding_account(
     conn: psycopg.Connection,
     tenant_id: uuid.UUID,
     client_entity_id: uuid.UUID,
+    direction: str = "rounding_loss",
 ) -> tuple[uuid.UUID, str, str]:
-    """Resolves rounding account from approved client_tax_mappings direction 'rounding'
-
+    """Resolves rounding account from approved client_tax_mappings (direction 'rounding_loss' or 'rounding_gain')
     or falls back to pack default marked needs_expert.
     """
+    target_direction = direction if direction in ("rounding_loss", "rounding_gain") else "rounding_loss"
     with conn.cursor() as cur:
+        # 1. Exact direction match ('rounding_loss' or 'rounding_gain')
+        cur.execute(
+            """
+            SELECT m.account_id, ca.account_code, ca.label
+            FROM client_tax_mappings m
+            JOIN chart_accounts ca ON ca.id = m.account_id AND ca.tenant_id = m.tenant_id
+            WHERE m.tenant_id = %s
+              AND m.client_entity_id = %s
+              AND m.direction = %s
+              AND m.approved_by IS NOT NULL
+            LIMIT 1;
+            """,
+            (tenant_id, client_entity_id, target_direction),
+        )
+        row = cur.fetchone()
+        if row:
+            return uuid.UUID(str(row[0])), str(row[1]), str(row[2])
+
+        # 2. General 'rounding' direction fallback
         cur.execute(
             """
             SELECT m.account_id, ca.account_code, ca.label
@@ -173,14 +215,19 @@ def resolve_rounding_account(
             """,
             (tenant_id, client_entity_id),
         )
-        row = cur.fetchone()
-        if row:
-            return uuid.UUID(str(row[0])), str(row[1]), str(row[2])
+        row_general = cur.fetchone()
+        if row_general:
+            return uuid.UUID(str(row_general[0])), str(row_general[1]), str(row_general[2])
 
     pack = get_jurisdiction_pack()
-    rule = pack.get_rule("accounting.fx_rounding.default_account")
-    default_code = str(rule["value"]) if rule else "6588"
-    default_label = "Charges / Produits d'arrondi (centimes)"
+    if target_direction == "rounding_gain":
+        rule = pack.get_rule("accounting.fx_rounding.gain_account")
+        default_code = str(rule["value"]) if rule else "7331"
+        default_label = "Gains de change sur arrondis (centimes)"
+    else:
+        rule = pack.get_rule("accounting.fx_rounding.loss_account")
+        default_code = str(rule["value"]) if rule else "6331"
+        default_label = "Pertes de change sur arrondis (centimes)"
 
     with conn.cursor() as cur:
         cur.execute(
@@ -244,15 +291,22 @@ def seed_approved_client_tax_mappings(
     acc_34551 = _ensure_acc("34551", "État - TVA récupérable sur immobilisations")
     acc_4455 = _ensure_acc("4455", "État - TVA facturée")
     acc_6588 = _ensure_acc("6588", "Charges / Produits d'arrondi (centimes)")
+    acc_6331 = _ensure_acc("6331", "Pertes de change sur arrondis")
+    acc_7331 = _ensure_acc("7331", "Gains de change sur arrondis")
 
     mappings = [
         ("STANDARD_20", "purchase", acc_34552),
         ("REDUCED_10", "purchase", acc_34552),
+        ("REDUCED_14", "purchase", acc_34552),
         ("STANDARD_20", "fixed_asset", acc_34551),
         ("REDUCED_10", "fixed_asset", acc_34551),
+        ("REDUCED_14", "fixed_asset", acc_34551),
         ("STANDARD_20", "sale", acc_4455),
         ("REDUCED_10", "sale", acc_4455),
+        ("REDUCED_14", "sale", acc_4455),
         ("ROUNDING", "rounding", acc_6588),
+        ("ROUNDING_LOSS", "rounding_loss", acc_6331),
+        ("ROUNDING_GAIN", "rounding_gain", acc_7331),
     ]
 
     with conn.cursor() as cur:

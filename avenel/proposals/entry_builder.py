@@ -297,6 +297,16 @@ def build_journal_proposal(
         main_account_id = top_suggestion.account_id
         main_account_code = top_suggestion.account_code
         main_account_label = top_suggestion.label
+
+        # Confidence check against pack threshold
+        confidence_thresh_rule = pack.get_rule("accounting.suggestion.confidence_threshold")
+        confidence_thresh = float(confidence_thresh_rule["value"]) if confidence_thresh_rule and confidence_thresh_rule.get("value") else 0.75
+        if top_suggestion.confidence < confidence_thresh:
+            detected_issues.append({
+                "code": "ACCOUNT_LOW_CONFIDENCE",
+                "severity": "review",
+                "reason": f"Confiance d'imputation comptable faible ({top_suggestion.confidence:.0%} < {confidence_thresh:.0%}) pour le compte {top_suggestion.account_code} ({top_suggestion.label}).",
+            })
     else:
         default_code = "7111" if is_sale else ("2355" if is_asset else "6111")
         default_lbl = "Ventes de marchandises" if is_sale else ("Matériel informatique" if is_asset else "Achats de marchandises")
@@ -338,7 +348,7 @@ def build_journal_proposal(
     is_supplier_auto_ent = cp_is_auto_ent or extracted_auto_ent
 
     # VAT deduction rules checks
-    # 1. Cash limit check (CGI art. 106-II)
+    # 1. Cash limit check (vat.deduction.cash_limit.daily)
     payment_method = str(extracted_fields.get("payment_method", {}).get("value") or "").lower()
     is_cash_payment = payment_method in ("cash", "especes", "espece", "espèce", "espèces", "caisse")
     cash_limit_rule = pack.get_rule("vat.deduction.cash_limit.daily")
@@ -354,7 +364,7 @@ def build_journal_proposal(
             "reason": f"Paiement en espèces ({raw_ttc:.2f} MAD) supérieur au plafond quotidien ({cash_limit_val:.2f} MAD). TVA non déductible ajoutée à la charge.",
         })
 
-    # 2. Exclusions by nature check (CGI art. 106-I)
+    # 2. Exclusions by nature check (vat.deduction.exclusions_by_nature)
     expense_nature = str(extracted_fields.get("expense_nature", {}).get("value") or "").lower()
     explicit_vat_deductible = extracted_fields.get("is_vat_deductible", {}).get("value")
     exclusions_rule = pack.get_rule("vat.deduction.exclusions_by_nature")
@@ -373,17 +383,17 @@ def build_journal_proposal(
             "reason": f"Nature de charge exclue du droit à déduction ({expense_nature or 'non déductible'}). TVA ajoutée au compte de charge.",
         })
 
-    # 3. Auto-entrepreneur supplier check (Loi 114-13 / CGI art. 89)
+    # 3. Auto-entrepreneur supplier check (invoice.auto_entrepreneur.vat_forbidden)
     if not is_sale and is_supplier_auto_ent:
         rule_refs.append("invoice.auto_entrepreneur.vat_forbidden")
         if raw_vat > 0:
             detected_issues.append({
                 "code": "VAT_ON_AUTO_ENTREPRENEUR_INVOICE",
                 "severity": "review",
-                "reason": "Fournisseur auto-entrepreneur ayant facturé de la TVA (interdit par Loi 114-13). Montant total imputé en charges sans ligne de TVA.",
+                "reason": "Fournisseur auto-entrepreneur ayant facturé de la TVA (interdit par la règle invoice.auto_entrepreneur.vat_forbidden). Montant total imputé en charges sans ligne de TVA.",
             })
 
-    # 4. Prorata deduction check (CGI art. 104)
+    # 4. Prorata deduction check (vat.deduction.prorata)
     vat_prorata: float | None = None
     with conn.cursor() as cur:
         cur.execute(
@@ -411,7 +421,7 @@ def build_journal_proposal(
     # Resolve VAT Account if VAT lines are to be created
     vat_direction = "output" if is_sale else ("fixed_asset" if is_asset else "purchase")
     rate_fraction = (raw_vat / raw_ht) if raw_ht > 0 else 0.0
-    matched_tax = match_vat_rate_to_pack(rate_fraction)
+    matched_tax = match_vat_rate_to_pack(rate_fraction, rate_date=entry_date)
     tax_code = matched_tax.code if matched_tax else "STANDARD_20"
 
     resolved_vat = None
@@ -467,7 +477,7 @@ def build_journal_proposal(
                 "evidence_refs": make_evidence("total_ttc"),
             })
         elif is_prorata_applied and vat_prorata is not None and resolved_vat is not None:
-            # Case B: Prorata deduction (CGI art. 104)
+            # Case B: Prorata deduction (vat.deduction.prorata)
             # Deductible VAT = raw_vat * prorata, Non-deductible VAT added to charge account
             deductible_vat = round(raw_vat * vat_prorata, 2)
             non_deductible_vat = round(raw_vat - deductible_vat, 2)
@@ -536,7 +546,7 @@ def build_journal_proposal(
                             sub_vat = raw_vat
                         if sub_vat <= 0.0:
                             continue
-                        sub_tax = match_vat_rate_to_pack(sub_rate)
+                        sub_tax = match_vat_rate_to_pack(sub_rate, rate_date=entry_date)
                         sub_code = sub_tax.code if sub_tax else tax_code
                         raw_lines.append({
                             "line_no": len(raw_lines) + 1,

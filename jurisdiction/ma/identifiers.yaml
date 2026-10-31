@@ -30,6 +30,14 @@
   status: "verified"
   note: "RIB marocain : 24 chiffres (clé mod-97)"
 
+- key: "identifiers.rib.modulus"
+  value: 97
+  effective_from: "2000-01-01"
+  effective_to: null
+  source: "Bank Al-Maghrib - Directive relative au Relevé d'Identité Bancaire"
+  status: "verified"
+  note: "Clé de contrôle mod-97: 97 - ((N * 100) % 97)"
+
 - key: "identifiers.rc.format"
   value: "^[0-9]{1,10}$"
   effective_from: "2000-01-01"
