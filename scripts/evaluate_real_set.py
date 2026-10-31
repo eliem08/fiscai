@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Evaluation harness for real labelled document set against ARCHITECTURE.md Part H gates.
 
 Strictly adheres to:
