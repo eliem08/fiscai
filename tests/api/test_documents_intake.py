@@ -211,8 +211,12 @@ def test_same_file_different_client_entities_creates_two_separate_documents(db_c
     seed_membership(db_conn, user_id, tenant_id, "accountant")
     set_rls_context(db_conn, tenant_id, user_id)
 
-    client_a_id = create_client_entity(db_conn, tenant_id, "Client Alpha SARL", actor_id=str(user_id)).id
-    client_b_id = create_client_entity(db_conn, tenant_id, "Client Beta SARL", actor_id=str(user_id)).id
+    client_a_id = create_client_entity(
+        db_conn, tenant_id, "Client Alpha SARL", actor_id=str(user_id), ice="001234567890123"
+    ).id
+    client_b_id = create_client_entity(
+        db_conn, tenant_id, "Client Beta SARL", actor_id=str(user_id), ice="002345678901234"
+    ).id
 
     p_a_id = open_accounting_period(
         db_conn,
