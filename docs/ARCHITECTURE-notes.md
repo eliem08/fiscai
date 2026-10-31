@@ -31,3 +31,4 @@ To guarantee strict tenant isolation and zero information leakage across tenant 
 | `POST /v1/client-entities/{id}/periods/{pid}/close` | Close period | ✅ 200 | ✅ 200 | ✅ 200 | ❌ 403 | ❌ 403 | ❌ 404 | ❌ 403 |
 | `POST /v1/client-entities/{id}/chart-accounts/seed-cgnc` | Seed CGNC | ✅ 200 | ✅ 200 | ✅ 200 | ❌ 403 | ❌ 403 | ❌ 404 | ❌ 403 |
 | `POST /v1/client-entities/{id}/chart-accounts/import` | Import chart | ✅ 200 | ✅ 200 | ✅ 200 | ❌ 403 | ❌ 403 | ❌ 404 | ❌ 403 |
+

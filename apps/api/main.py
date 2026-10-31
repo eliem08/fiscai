@@ -8,7 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from apps.api.middleware import IdempotencyMiddleware
-from apps.api.routes import chart, clients, compliance, periods, session
+from apps.api.routes import (
+    chart,
+    clients,
+    compliance,
+    documents,
+    periods,
+    session,
+    work_requests,
+)
 from avenel.tenancy.jwt import MfaRequiredError
 
 app = FastAPI(
@@ -100,9 +108,11 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "avenel-api"}
 
 
-# Include Phase 1 domain routers
+# Include domain routers
 app.include_router(session.router)
 app.include_router(clients.router)
 app.include_router(periods.router)
 app.include_router(chart.router)
 app.include_router(compliance.router)
+app.include_router(work_requests.router)
+app.include_router(documents.router)

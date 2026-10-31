@@ -1,0 +1,46 @@
+- key: "invoice.mandatory_mentions.purchase"
+  value:
+    - "invoice_number"
+    - "invoice_date"
+    - "supplier_name"
+    - "supplier_ice"
+    - "supplier_if"
+    - "client_name"
+    - "total_ht"
+    - "total_ttc"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 145-III"
+  status: "verified"
+  note: "Mentions obligatoires sur les factures d'achat (CGI art. 145-III) pour droit à déduction"
+
+- key: "invoice.mandatory_mentions.sale"
+  value:
+    - "invoice_number"
+    - "invoice_date"
+    - "client_name"
+    - "client_ice"
+    - "total_ht"
+    - "total_ttc"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 145-III"
+  status: "verified"
+  note: "Mentions obligatoires sur les factures de vente établies pour les clients professionnels"
+
+- key: "invoice.arithmetic_tolerance"
+  value: 0.01
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 99 / Pratique comptable OEC"
+  status: "verified"
+  note: "Tolérance d'arrondi sur calculs arithmétiques par taux (0.01 MAD)"
+
+- key: "invoice.auto_entrepreneur.vat_forbidden"
+  value: true
+  effective_from: "2015-01-01"
+  effective_to: null
+  source: "Loi n° 114-13 / CGI art. 89"
+  status: "verified"
+  note: "Les auto-entrepreneurs sont hors champ d'application de la TVA et ne peuvent pas facturer de TVA"
+

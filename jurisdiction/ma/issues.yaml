@@ -9,6 +9,83 @@
   source: "Product"
   status: "verified"
 
+- key: "issues.DOC_MALWARE"
+  value:
+    code: "DOC_MALWARE"
+    default_severity: "blocking"
+    title_fr: "Fichier malveillant détecté"
+    title_en: "Malicious file detected"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product / Loi 05-20"
+  status: "verified"
+
+- key: "issues.DOC_UNSUPPORTED_TYPE"
+  value:
+    code: "DOC_UNSUPPORTED_TYPE"
+    default_severity: "blocking"
+    title_fr: "Format de document non supporté"
+    title_en: "Unsupported document format"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product"
+  status: "verified"
+
+- key: "issues.DUPLICATE_EXACT"
+  value:
+    code: "DUPLICATE_EXACT"
+    default_severity: "blocking"
+    title_fr: "Doublon exact (même empreinte SHA-256)"
+    title_en: "Exact duplicate (same SHA-256 hash)"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product / Loi 9-88"
+  status: "verified"
+
+- key: "issues.DUPLICATE_PROBABLE"
+  value:
+    code: "DUPLICATE_PROBABLE"
+    default_severity: "review"
+    title_fr: "Doublon probable (même fournisseur, numéro et montant)"
+    title_en: "Probable duplicate (same supplier, number and amount)"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product / Loi 9-88"
+  status: "verified"
+
+- key: "issues.INVOICE_MISSING_MANDATORY_FIELD"
+  value:
+    code: "INVOICE_MISSING_MANDATORY_FIELD"
+    default_severity: "review"
+    title_fr: "Mention obligatoire manquante"
+    title_en: "Missing mandatory invoice mention"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 145-III"
+  status: "verified"
+
+- key: "issues.ICE_INVALID_FORMAT"
+  value:
+    code: "ICE_INVALID_FORMAT"
+    default_severity: "review"
+    title_fr: "Format ICE invalide (doit comporter 15 chiffres)"
+    title_en: "Invalid ICE format (must be 15 digits)"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 145"
+  status: "verified"
+
+- key: "issues.ICE_CHECK_DIGIT_MISMATCH"
+  value:
+    code: "ICE_CHECK_DIGIT_MISMATCH"
+    default_severity: "review"
+    title_fr: "Clé de contrôle ICE non concordante"
+    title_en: "ICE check digit mismatch"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "OMPIC / DGI"
+  status: "verified"
+
 - key: "issues.TOTALS_INCONSISTENT"
   value:
     code: "TOTALS_INCONSISTENT"
@@ -26,6 +103,149 @@
     default_severity: "blocking"
     title_fr: "Taux de TVA inconnu"
     title_en: "Unknown VAT rate"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product"
+  status: "verified"
+
+- key: "issues.VAT_NOT_DEDUCTIBLE_CASH_LIMIT"
+  value:
+    code: "VAT_NOT_DEDUCTIBLE_CASH_LIMIT"
+    default_severity: "review"
+    title_fr: "TVA non déductible — Dépassement du plafond espèces"
+    title_en: "Non-deductible VAT — Cash limit exceeded"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 106-II"
+  status: "verified"
+
+- key: "issues.VAT_NOT_DEDUCTIBLE_BY_NATURE"
+  value:
+    code: "VAT_NOT_DEDUCTIBLE_BY_NATURE"
+    default_severity: "review"
+    title_fr: "TVA non déductible par nature de dépense"
+    title_en: "VAT non-deductible by nature of expense"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 106-I"
+  status: "verified"
+
+- key: "issues.VAT_ON_AUTO_ENTREPRENEUR_INVOICE"
+  value:
+    code: "VAT_ON_AUTO_ENTREPRENEUR_INVOICE"
+    default_severity: "review"
+    title_fr: "TVA facturée par un auto-entrepreneur (interdit)"
+    title_en: "VAT charged on auto-entrepreneur invoice (forbidden)"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Loi 114-13 / CGI art. 89"
+  status: "verified"
+
+- key: "issues.ACCOUNT_UNMAPPED"
+  value:
+    code: "ACCOUNT_UNMAPPED"
+    default_severity: "blocking"
+    title_fr: "Compte comptable non associé dans le plan"
+    title_en: "Unmapped account code in chart"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGNC / Plan comptable"
+  status: "verified"
+
+- key: "issues.ACCOUNT_LOW_CONFIDENCE"
+  value:
+    code: "ACCOUNT_LOW_CONFIDENCE"
+    default_severity: "review"
+    title_fr: "Faible confiance d'imputation comptable"
+    title_en: "Low confidence account suggestion"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product"
+  status: "verified"
+
+- key: "issues.FX_RATE_MISSING"
+  value:
+    code: "FX_RATE_MISSING"
+    default_severity: "blocking"
+    title_fr: "Taux de change devise manquant"
+    title_en: "Missing FX conversion rate"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGNC / Bank Al-Maghrib"
+  status: "verified"
+
+- key: "issues.PERIOD_MISMATCH"
+  value:
+    code: "PERIOD_MISMATCH"
+    default_severity: "review"
+    title_fr: "Date de pièce hors de la période comptable"
+    title_en: "Document date outside accounting period"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Loi 9-88 art. 7"
+  status: "verified"
+
+- key: "issues.BANK_BALANCE_BREAK"
+  value:
+    code: "BANK_BALANCE_BREAK"
+    default_severity: "blocking"
+    title_fr: "Rupture de solde bancaire"
+    title_en: "Bank statement balance break"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Loi 9-88"
+  status: "verified"
+
+- key: "issues.BANK_LINE_UNMATCHED"
+  value:
+    code: "BANK_LINE_UNMATCHED"
+    default_severity: "review"
+    title_fr: "Ligne bancaire non rapprochée"
+    title_en: "Unmatched bank transaction line"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product"
+  status: "verified"
+
+- key: "issues.MATCH_AMOUNT_DIFFERENCE"
+  value:
+    code: "MATCH_AMOUNT_DIFFERENCE"
+    default_severity: "review"
+    title_fr: "Écart de montant sur rapprochement bancaire"
+    title_en: "Amount difference on reconciliation match"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Product"
+  status: "verified"
+
+- key: "issues.RAS_EXPECTED_NOT_FOUND"
+  value:
+    code: "RAS_EXPECTED_NOT_FOUND"
+    default_severity: "review"
+    title_fr: "Retenue à la source attendue non constatée"
+    title_en: "Expected withholding tax not found"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGI art. 117-IV"
+  status: "verified"
+
+- key: "issues.MISSING_SUPPORTING_DOCUMENT"
+  value:
+    code: "MISSING_SUPPORTING_DOCUMENT"
+    default_severity: "review"
+    title_fr: "Pièce justificative manquante"
+    title_en: "Missing supporting document"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "Loi 9-88 art. 1"
+  status: "verified"
+
+- key: "issues.INTEGRATION_FAILURE"
+  value:
+    code: "INTEGRATION_FAILURE"
+    default_severity: "blocking"
+    title_fr: "Échec de l'intégration ou du fournisseur"
+    title_en: "Integration or provider failure"
   effective_from: "2026-01-01"
   effective_to: null
   source: "Product"

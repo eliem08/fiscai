@@ -7,12 +7,19 @@ import uuid
 import psycopg
 
 
-def seed_tenant(conn: psycopg.Connection, legal_name: str = "Cabinet Test") -> uuid.UUID:
+def seed_tenant(
+    conn: psycopg.Connection,
+    legal_name: str = "Cabinet Test",
+    residency_policy: str = "MA_ONLY",
+) -> uuid.UUID:
     t_id = uuid.uuid4()
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO tenants (id, legal_name, status) VALUES (%s, %s, 'active');",
-            (t_id, legal_name),
+            """
+            INSERT INTO tenants (id, legal_name, data_residency_policy, status)
+            VALUES (%s, %s, %s, 'active');
+            """,
+            (t_id, legal_name, residency_policy),
         )
     conn.commit()
     return t_id

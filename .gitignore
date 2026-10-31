@@ -22,3 +22,6 @@ ENV/
 # SQLite WAL
 *.db-shm
 *.db-wal
+
+# Local storage
+storage_data/

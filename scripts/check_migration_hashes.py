@@ -63,3 +63,4 @@ def check_frozen_migrations() -> int:
 
 if __name__ == "__main__":
     sys.exit(check_frozen_migrations())
+

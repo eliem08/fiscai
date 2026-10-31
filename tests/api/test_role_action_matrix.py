@@ -246,3 +246,4 @@ def test_role_action_matrix_chart(rbac_env: dict[str, Any]):
     # In-scope: accountant -> 200
     assert _send_request(client, "POST", f"/v1/client-entities/{c_in}/chart-accounts/seed-cgnc", rbac_env["accountant_sub"], t_id).status_code == 200
     assert _send_request(client, "POST", f"/v1/client-entities/{c_in}/chart-accounts/import", rbac_env["accountant_sub"], t_id, import_payload).status_code == 200
+

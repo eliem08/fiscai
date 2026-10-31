@@ -23,6 +23,10 @@ tags:
     description: Moroccan regulatory and CNDP compliance operations
   - name: Work
     description: Monthly bookkeeping file operations
+  - name: Documents
+    description: Document intake, OCR, and extraction operations
+  - name: Issues
+    description: Document and reconciliation exception management
 
 paths:
   /me:
@@ -427,6 +431,245 @@ paths:
         "409":
           $ref: "#/components/responses/ProblemDetails"
 
+  /work-requests/{id}:
+    get:
+      operationId: getWorkRequest
+      tags:
+        - Work
+      summary: Get work request by ID
+      description: Returns bookkeeping file metadata by ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Work request details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkRequest"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /work-requests/{id}/uploads:
+    post:
+      operationId: initDocumentUpload
+      tags:
+        - Documents
+      summary: Initialize document upload
+      description: Validates payload and provides upload credentials.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadInitRequest"
+      responses:
+        "201":
+          description: Upload initialized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadInitResponse"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+        "409":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /work-requests/{id}/documents:
+    get:
+      operationId: listWorkRequestDocuments
+      tags:
+        - Documents
+      summary: List documents for a work request
+      description: Returns all uploaded documents for a bookkeeping work request.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentList"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /work-requests/{id}/issues:
+    get:
+      operationId: listWorkRequestIssues
+      tags:
+        - Issues
+      summary: List issues for a work request
+      description: Returns all validation issues and exceptions for a work request.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of issues
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueList"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /documents/{id}:
+    get:
+      operationId: getDocument
+      tags:
+        - Documents
+      summary: Get document metadata
+      description: Returns document metadata and current processing status.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Document details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDetail"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /documents/{id}:complete-upload:
+    post:
+      operationId: completeDocumentUpload
+      tags:
+        - Documents
+      summary: Complete document upload and process
+      description: Confirms upload and triggers OCR and deterministic extraction.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      responses:
+        "200":
+          description: Document processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompleteUploadResponse"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /documents/{id}/pages/{n}:
+    get:
+      operationId: getDocumentPage
+      tags:
+        - Documents
+      summary: Get rendered page image URL
+      description: Returns signed image URL for document page n.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: n
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Page image metadata and URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentPageResponse"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /documents/{id}/extraction:
+    get:
+      operationId: getDocumentExtraction
+      tags:
+        - Documents
+      summary: Get document extracted fields and validation
+      description: Returns structured fields, confidences, bboxes, and validation report.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Extraction results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractionResponse"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+    patch:
+      operationId: correctDocumentExtraction
+      tags:
+        - Documents
+      summary: Correct extracted fields
+      description: Updates extracted fields, generates immutable evidence record, and re-validates.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExtractionPatchRequest"
+      responses:
+        "200":
+          description: Corrected extraction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractionResponse"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
 components:
   parameters:
     IdempotencyKeyHeader:
@@ -764,4 +1007,177 @@ components:
           type: integer
         message:
           type: string
+
+    UploadInitRequest:
+      type: object
+      required:
+        - original_filename
+        - byte_size
+        - mime_type
+        - sha256
+      properties:
+        original_filename:
+          type: string
+        byte_size:
+          type: integer
+          minimum: 1
+          maximum: 52428800
+        mime_type:
+          type: string
+        sha256:
+          type: string
+          pattern: "^[0-9a-fA-F]{64}$"
+
+    UploadInitResponse:
+      type: object
+      required:
+        - document_id
+        - document_version_id
+        - object_key
+        - presigned_upload
+      properties:
+        document_id:
+          type: string
+          format: uuid
+        document_version_id:
+          type: string
+          format: uuid
+        object_key:
+          type: string
+        presigned_upload:
+          type: object
+
+    CompleteUploadResponse:
+      type: object
+      required:
+        - document_id
+        - doc_type
+        - status
+        - extraction_id
+      properties:
+        document_id:
+          type: string
+          format: uuid
+        doc_type:
+          type: string
+        status:
+          type: string
+        extraction_id:
+          type: string
+          format: uuid
+        validation:
+          type: object
+
+    DocumentDetail:
+      type: object
+      required:
+        - id
+        - client_entity_id
+        - original_filename
+        - status
+        - doc_type
+      properties:
+        id:
+          type: string
+          format: uuid
+        client_entity_id:
+          type: string
+          format: uuid
+        work_request_id:
+          type: ["string", "null"]
+          format: uuid
+        original_filename:
+          type: string
+        status:
+          type: string
+        doc_type:
+          type: ["string", "null"]
+        page_count:
+          type: ["integer", "null"]
+        received_at:
+          type: string
+          format: date-time
+
+    DocumentList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentDetail"
+
+    DocumentPageResponse:
+      type: object
+      required:
+        - page_number
+        - image_url
+        - media_type
+      properties:
+        page_number:
+          type: integer
+        image_url:
+          type: string
+        media_type:
+          type: string
+
+    ExtractionResponse:
+      type: object
+      required:
+        - extraction_id
+        - fields
+        - validation
+      properties:
+        extraction_id:
+          type: string
+          format: uuid
+        fields:
+          type: object
+        validation:
+          type: object
+
+    ExtractionPatchRequest:
+      type: object
+      required:
+        - fields
+      properties:
+        fields:
+          type: object
+
+    IssueDetail:
+      type: object
+      required:
+        - id
+        - code
+        - severity
+        - status
+        - details
+      properties:
+        id:
+          type: string
+          format: uuid
+        document_id:
+          type: ["string", "null"]
+          format: uuid
+        code:
+          type: string
+        severity:
+          type: string
+          enum: ["info", "review", "blocking"]
+        status:
+          type: string
+          enum: ["open", "assigned", "resolved", "dismissed"]
+        details:
+          type: object
+
+    IssueList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IssueDetail"
 
