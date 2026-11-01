@@ -40,7 +40,7 @@
 - **Orchestration et infrastructure :**
   - Configuration `docker-compose.prod.yml` et manifestes Terraform pour VM hébergée au Maroc (N+ONE, Inwi Cloud) ou UE selon `data_residency_policy`.
   - Terminaison TLS automatisée, variables d'environnement hors dépôt, intégration KMS pour clé maître de chiffrement.
-  - Journalisation structurée JSON (`avenel/infrastructure/logging.py`) bannissant formellement l'affichage des contenus textuels bruts de documents ou de données personnelles (PII).
+  - Journalisation structurée JSON (`avenel/infrastructure/structured_logging.py`) bannissant formellement l'affichage des contenus textuels bruts de documents ou de données personnelles (PII).
 
 ### Module 4 : Sauvegardes et Test de Restauration Déterministe
 - **Configuration PITR :** Archivage continu des WAL PostgreSQL et sauvegardes de base quotidiennes chiffrées.
