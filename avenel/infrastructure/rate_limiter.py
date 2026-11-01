@@ -22,8 +22,8 @@ class PostgresRateLimiter:
         bucket_key: str,
         rate_per_minute: int,
         burst_capacity: int | None = None,
-    ) -> bool:
-        """Attempts to consume 1 token from the bucket. Returns True if allowed, False if rate limited."""
+    ) -> tuple[bool, int]:
+        """Attempts to consume 1 token from the bucket. Returns (allowed, remaining_tokens)."""
         capacity = float(burst_capacity or rate_per_minute)
         refill_rate = float(rate_per_minute) / 60.0  # tokens per second
         now = time.time()
@@ -54,7 +54,7 @@ class PostgresRateLimiter:
                     (bucket_key, initial_tokens, now),
                 )
                 conn.commit()
-                return True
+                return True, int(initial_tokens)
 
             current_tokens, last_refilled_at = float(row[0]), float(row[1])
             delta_time = max(0.0, now - last_refilled_at)
@@ -71,7 +71,7 @@ class PostgresRateLimiter:
                     (new_tokens, now, bucket_key),
                 )
                 conn.commit()
-                return True
+                return True, int(new_tokens)
             else:
                 # Update refilled tokens without consuming
                 cur.execute(
@@ -83,4 +83,4 @@ class PostgresRateLimiter:
                     (refilled_tokens, now, bucket_key),
                 )
                 conn.commit()
-                return False
+                return False, 0

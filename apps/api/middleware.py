@@ -200,10 +200,10 @@ class RateLimitStore:
         if self._db_url:
             try:
                 with psycopg.connect(self._db_url, autocommit=True) as conn:
-                    allowed = self._pg_limiter.acquire(conn, key, rate_per_minute=max_requests)
+                    allowed, remaining = self._pg_limiter.acquire(conn, key, rate_per_minute=max_requests)
                     if not allowed:
                         return False, 0, window_seconds
-                    return True, max_requests - 1, 0
+                    return True, remaining, 0
             except (psycopg.Error, OSError):
                 # Fallback to local in-memory on DB connection failure
                 pass

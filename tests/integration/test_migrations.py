@@ -35,7 +35,7 @@ def test_migrations_forward_and_rollback_cycle(postgres_url: str):
 
     # 2. Apply up
     applied_up = apply_migrations(postgres_url)
-    assert len(applied_up) == 8
+    assert len(applied_up) == 9
     assert applied_up == [
         "001_core",
         "002_rls",
@@ -45,10 +45,21 @@ def test_migrations_forward_and_rollback_cycle(postgres_url: str):
         "006_reconciliation_refinements",
         "007_active_bq_proposal_unique",
         "008_round_trips_and_approval_policy",
+        "009_review_metrics_and_rate_limits",
     ]
 
     with get_connection(postgres_url) as conn:
-        assert get_applied_versions(conn) == {"001", "002", "003", "004", "005", "006", "007", "008"}
+        assert get_applied_versions(conn) == {
+            "001",
+            "002",
+            "003",
+            "004",
+            "005",
+            "006",
+            "007",
+            "008",
+            "009",
+        }
 
 
 def test_migrate_down_refuses_in_production(postgres_url: str, monkeypatch):

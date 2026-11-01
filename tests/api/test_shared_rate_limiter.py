@@ -38,19 +38,19 @@ def test_shared_rate_limiter_two_workers(db_url: str):
 
         # Worker 1 consumes 3 tokens
         for _ in range(3):
-            allowed = limiter.acquire(conn_worker_1, bucket_key, rate_per_minute=limit, burst_capacity=limit)
+            allowed, _ = limiter.acquire(conn_worker_1, bucket_key, rate_per_minute=limit, burst_capacity=limit)
             assert allowed is True, "Worker 1 should be allowed initial tokens"
 
         # Worker 2 attempts to consume 2 tokens
         for _ in range(2):
-            allowed = limiter.acquire(conn_worker_2, bucket_key, rate_per_minute=limit, burst_capacity=limit)
+            allowed, _ = limiter.acquire(conn_worker_2, bucket_key, rate_per_minute=limit, burst_capacity=limit)
             assert allowed is True, "Worker 2 should consume remaining tokens"
 
         # Total 5 consumed. Both Worker 1 and Worker 2 should now be throttled
-        throttled_w1 = limiter.acquire(conn_worker_1, bucket_key, rate_per_minute=limit, burst_capacity=limit)
+        throttled_w1, _ = limiter.acquire(conn_worker_1, bucket_key, rate_per_minute=limit, burst_capacity=limit)
         assert throttled_w1 is False, "Worker 1 should be throttled after shared bucket exhaustion"
 
-        throttled_w2 = limiter.acquire(conn_worker_2, bucket_key, rate_per_minute=limit, burst_capacity=limit)
+        throttled_w2, _ = limiter.acquire(conn_worker_2, bucket_key, rate_per_minute=limit, burst_capacity=limit)
         assert throttled_w2 is False, "Worker 2 should be throttled after shared bucket exhaustion"
 
     finally:
