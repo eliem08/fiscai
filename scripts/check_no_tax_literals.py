@@ -33,6 +33,13 @@ FORBIDDEN_ACCOUNT_SEED_PATTERNS = [
     (re.compile(r'\{["\']code["\']\s*:\s*["\'](1111|3421|4411|5141|6111|7111)["\']'), "Hardcoded accounting account seed dictionary in app code"),
 ]
 
+# Forbidden banned copy patterns (Rule A.10 & Review Instructions)
+# Forbids claiming software/dossier/pack is "certifié" / "certified" or "conforme"
+FORBIDDEN_BANNED_COPY = [
+    (re.compile(r"(?i)\b(certifi[eé]|certified)\b"), "Forbidden copy 'certifié' / 'certified' (Rule A.10)"),
+    (re.compile(r"(?i)\bconforme\b"), "Forbidden copy 'conforme' (Rule A.10)"),
+]
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 EXCLUDE_DIRS = {
@@ -99,6 +106,11 @@ def scan_file(path: Path) -> list[tuple[int, str, str]]:
 
         # 3. Hardcoded account seeds
         for pat, desc in FORBIDDEN_ACCOUNT_SEED_PATTERNS:
+            if pat.search(line):
+                violations.append((idx, desc, line.strip()))
+
+        # 4. Forbidden banned copy
+        for pat, desc in FORBIDDEN_BANNED_COPY:
             if pat.search(line):
                 violations.append((idx, desc, line.strip()))
 

@@ -33,6 +33,12 @@ tags:
     description: Bank account registration and statement ingestion operations
   - name: Reconciliation
     description: Bank reconciliation candidate generation and matching operations
+  - name: Approvals
+    description: Work request approval workflows and segregation of duties
+  - name: Exports
+    description: Accounting exports (Sage 100, Odoo) and evidence packs
+  - name: Portal
+    description: Client portal requests and interactions
 
 paths:
   /me:
@@ -1018,6 +1024,535 @@ paths:
         "404":
           $ref: "#/components/responses/ProblemDetails"
 
+  /approvals:
+    get:
+      operationId: listPendingApprovals
+      tags:
+        - Approvals
+      summary: List pending work request approvals
+      description: Returns dossiers awaiting formal human approval in the tenant.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            default: pending
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        "200":
+          description: List of dossiers awaiting approval
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PendingApproval"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /work-requests/{work_request_id}/approvals:
+    post:
+      operationId: requestWorkRequestApproval
+      tags:
+        - Approvals
+      summary: Submit monthly dossier for formal approval
+      description: Validates quality gate (0 blocking issues, all proposals balanced) and creates approval record with subject_hash.
+      parameters:
+        - name: work_request_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      responses:
+        "201":
+          description: Dossier submitted for approval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRecord"
+        "400":
+          $ref: "#/components/responses/ProblemDetails"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+        "409":
+          $ref: "#/components/responses/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /approvals/{approval_id}:decide:
+    post:
+      operationId: decideApproval
+      tags:
+        - Approvals
+      summary: Approve, reject, or cancel a monthly dossier
+      description: Enforces segregation of duties (preparer cannot approve) and professional registration.
+      parameters:
+        - name: approval_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecideApprovalRequest"
+      responses:
+        "200":
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRecord"
+        "400":
+          $ref: "#/components/responses/ProblemDetails"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+        "409":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /work-requests/{work_request_id}/exports:
+    post:
+      operationId: createExport
+      tags:
+        - Exports
+      summary: Generate accounting export and evidence pack
+      description: Verifies subject_hash matches approved dossier (Invariant #7) and records billing usage.
+      parameters:
+        - name: work_request_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExportRequest"
+      responses:
+        "201":
+          description: Export created and ready for download
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportRecord"
+        "400":
+          $ref: "#/components/responses/ProblemDetails"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+        "409":
+          $ref: "#/components/responses/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /export-profiles/{id}:record-round-trip:
+    post:
+      operationId: recordExportRoundTrip
+      tags:
+        - Exports
+      summary: Record software round trip test
+      description: Records manual round trip verification on third-party software (owner/manager only, requiring MFA).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - software
+                - version
+                - imported_at
+                - result
+              properties:
+                software:
+                  type: string
+                  minLength: 1
+                version:
+                  type: string
+                  minLength: 1
+                imported_at:
+                  type: string
+                  format: date-time
+                result:
+                  type: string
+                  enum: [ok, failed]
+                notes:
+                  type: [string, "null"]
+                screenshot_document_id:
+                  type: [string, "null"]
+                  format: uuid
+      responses:
+        "200":
+          description: Round trip recorded
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/ProblemDetails"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /exports/{export_id}:
+    get:
+      operationId: getExport
+      tags:
+        - Exports
+      summary: Get export metadata
+      description: Returns metadata including file SHA-256 and verified round-trip status.
+      parameters:
+        - name: export_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Export metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportRecord"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /exports/{export_id}/file:
+    get:
+      operationId: downloadExportFile
+      tags:
+        - Exports
+      summary: Download accounting export file
+      description: Downloads the Sage 100 CSV, Sage 100 PNM, or Odoo CSV file.
+      parameters:
+        - name: export_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Signed token expiring in 15 minutes
+      responses:
+        "200":
+          description: Accounting export file
+          content:
+            text/plain:
+              schema:
+                type: string
+            text/csv:
+              schema:
+                type: string
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /exports/{export_id}/evidence-pack:
+    get:
+      operationId: downloadEvidencePack
+      tags:
+        - Exports
+      summary: Download evidence pack ZIP
+      description: Downloads the complete evidence pack including manifest JSON, summary PDF, and SHA-256 verified documents.
+      parameters:
+        - name: export_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Signed token expiring in 15 minutes
+      responses:
+        "200":
+          description: Evidence pack archive
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /issues/{issue_id}:assign:
+    post:
+      operationId: assignIssue
+      tags:
+        - Issues
+      summary: Assign issue to user
+      description: Assigns an unresolved issue to a cabinet user.
+      parameters:
+        - name: issue_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignIssueRequest"
+      responses:
+        "200":
+          description: Issue assigned
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /issues/{issue_id}:resolve:
+    post:
+      operationId: resolveIssue
+      tags:
+        - Issues
+      summary: Resolve or waive issue
+      description: Marks an issue as fixed, accepted_as_is, or waived.
+      parameters:
+        - name: issue_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveIssueRequest"
+      responses:
+        "200":
+          description: Issue resolved
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/ProblemDetails"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /issues/{issue_id}:acknowledge:
+    post:
+      operationId: acknowledgeIssue
+      tags:
+        - Issues
+      summary: Acknowledge review issue
+      description: Acknowledges a review-severity issue as accepted_as_is with a non-empty justification note.
+      parameters:
+        - name: issue_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - resolution_note
+              properties:
+                resolution_note:
+                  type: string
+                  minLength: 1
+      responses:
+        "200":
+          description: Issue acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/ProblemDetails"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /issues/{issue_id}:send-to-client:
+    post:
+      operationId: sendIssueToClient
+      tags:
+        - Issues
+      summary: Send issue to client portal
+      description: Dispatches a prompt to the client portal requesting documentation or clarification.
+      parameters:
+        - name: issue_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendToClientRequest"
+      responses:
+        "200":
+          description: Request dispatched to portal
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /portal/requests:
+    get:
+      operationId: listPortalRequests
+      tags:
+        - Portal
+      summary: List open portal requests for client
+      description: Returns requests waiting for client clarification or attachment in the portal.
+      parameters:
+        - name: client_entity_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Open portal requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalRequestRecord"
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
+  /portal/requests/{request_id}:answer:
+    post:
+      operationId: answerPortalRequest
+      tags:
+        - Portal
+      summary: Answer portal request
+      description: Client user responds to clarification prompt with text and optional attachment.
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerPortalRequest"
+      responses:
+        "200":
+          description: Portal request answered
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/ProblemDetails"
+        "403":
+          $ref: "#/components/responses/ProblemDetails"
+        "404":
+          $ref: "#/components/responses/ProblemDetails"
+
 components:
   parameters:
     IdempotencyKeyHeader:
@@ -1878,5 +2413,252 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReconciliationMatchItemDetail"
+
+    PendingApproval:
+      type: object
+      required:
+        - id
+        - work_request_id
+        - client_entity_id
+        - legal_name
+        - period_code
+        - status
+        - subject_hash
+        - prepared_by
+        - prepared_by_name
+        - requested_at
+        - proposals_count
+        - open_issues_count
+      properties:
+        id:
+          type: string
+          format: uuid
+        work_request_id:
+          type: string
+          format: uuid
+        client_entity_id:
+          type: string
+          format: uuid
+        legal_name:
+          type: string
+        period_code:
+          type: string
+        status:
+          type: string
+        subject_hash:
+          type: string
+        prepared_by:
+          type: string
+          format: uuid
+        prepared_by_name:
+          type: string
+        requested_at:
+          type: string
+          format: date-time
+        proposals_count:
+          type: integer
+        open_issues_count:
+          type: integer
+
+    ApprovalRecord:
+      type: object
+      required:
+        - id
+        - work_request_id
+        - status
+        - subject_hash
+        - prepared_by
+        - requested_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        work_request_id:
+          type: string
+          format: uuid
+        client_entity_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, approved, rejected, cancelled]
+        subject_hash:
+          type: string
+        prepared_by:
+          type: string
+          format: uuid
+        requested_at:
+          type: string
+          format: date-time
+        decided_by:
+          type: ["string", "null"]
+          format: uuid
+        decided_at:
+          type: ["string", "null"]
+          format: date-time
+        decision_reason:
+          type: ["string", "null"]
+        proposals_count:
+          type: integer
+
+    DecideApprovalRequest:
+      type: object
+      required:
+        - decision
+        - reason
+        - subject_hash
+      properties:
+        decision:
+          type: string
+          enum: [approved, rejected, cancelled]
+        reason:
+          type: string
+          minLength: 1
+        subject_hash:
+          type: string
+          minLength: 64
+          maxLength: 64
+
+    CreateExportRequest:
+      type: object
+      required:
+        - approval_id
+      properties:
+        approval_id:
+          type: string
+          format: uuid
+        target:
+          type: string
+          enum: [sage100_csv, sage100_pnm, odoo_csv]
+          default: sage100_csv
+        export_profile_id:
+          type: ["string", "null"]
+          format: uuid
+
+    ExportRecord:
+      type: object
+      required:
+        - id
+        - work_request_id
+        - client_entity_id
+        - status
+        - target
+        - encoding
+        - file_sha256
+        - evidence_pack_sha256
+        - subject_hash
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        work_request_id:
+          type: string
+          format: uuid
+        client_entity_id:
+          type: string
+          format: uuid
+        export_profile_id:
+          type: string
+          format: uuid
+        approval_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [generating, ready, failed]
+        target:
+          type: string
+        encoding:
+          type: string
+        file_sha256:
+          type: string
+        evidence_pack_sha256:
+          type: string
+        subject_hash:
+          type: string
+        file_path:
+          type: string
+        evidence_pack_path:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AssignIssueRequest:
+      type: object
+      required:
+        - assigned_to
+      properties:
+        assigned_to:
+          type: string
+          format: uuid
+
+    ResolveIssueRequest:
+      type: object
+      properties:
+        resolution:
+          type: string
+          enum: [fixed, accepted_as_is, waived]
+          default: fixed
+        resolution_note:
+          type: ["string", "null"]
+
+    SendToClientRequest:
+      type: object
+      required:
+        - prompt
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+
+    PortalRequestRecord:
+      type: object
+      required:
+        - id
+        - client_entity_id
+        - legal_name
+        - code
+        - message
+        - prompt
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        client_entity_id:
+          type: string
+          format: uuid
+        legal_name:
+          type: string
+        work_request_id:
+          type: ["string", "null"]
+          format: uuid
+        document_id:
+          type: ["string", "null"]
+          format: uuid
+        code:
+          type: string
+        message:
+          type: string
+        prompt:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AnswerPortalRequest:
+      type: object
+      required:
+        - response
+      properties:
+        response:
+          type: string
+          minLength: 1
+        attached_document_id:
+          type: ["string", "null"]
+          format: uuid
+
 
 

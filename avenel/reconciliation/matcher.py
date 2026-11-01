@@ -28,6 +28,7 @@ class CandidateItem:
     label: str
     counterparty: str | None = None
     vat_mad: float = 0.0
+    ht_mad: float = 0.0
 
 
 @dataclass
@@ -75,8 +76,14 @@ def match_single_pair(
     pack = get_jurisdiction_pack()
     withholding_rule = pack.get_rule("vat.withholding.rates")
     rates_raw = withholding_rule.get("value") if withholding_rule else None
-    rates_dict: dict[str, Any] = rates_raw if isinstance(rates_raw, dict) else {"partial": 0.75, "full": 1.00}
-    withheld_fractions = [float(v) for v in rates_dict.values()]
+    rates_dict: dict[str, Any] = rates_raw if isinstance(rates_raw, dict) else {}
+    withheld_fractions = [
+        float(v)
+        for k, v in rates_dict.items()
+        if k != "base" and (isinstance(v, (int, float)) or (isinstance(v, str) and v.replace(".", "", 1).isdigit()))
+    ]
+    if not withheld_fractions:
+        withheld_fractions = [0.75, 1.0]
 
     tokens_bank = _tokenize(bank_tx.label)
     tokens_prop = _tokenize(f"{proposal.label} {proposal.counterparty or ''}")
@@ -103,8 +110,44 @@ def match_single_pair(
             explanation="Rapprochement exact du montant et de la période.",
         )
 
-    # 2. TVA Retenue à la source (vat_withheld)
-    # Bank receipt is lower than invoice TTC by 75% or 100% of TVA
+    # Assiette HT pour l'IS (HT = TTC - TVA si non renseigné explicitement)
+    ht_base = proposal.ht_mad if proposal.ht_mad > 0 else max(0.0, prop_abs - proposal.vat_mad)
+
+    # 2. Retenues à la source combinées (TVA + IS LF 2026)
+    # Encaissement net = TTC - (vat_rate * TVA) - (is_rate * HT)
+    if diff > 0 and proposal.vat_mad > 0 and ht_base > 0:
+        for frac in withheld_fractions:
+            expected_vat_part = round(proposal.vat_mad * frac, 2)
+            for rule_key in ("withholding.is.services_5pct", "withholding.is.rents_5pct"):
+                is_rule = pack.get_rule(rule_key)
+                if is_rule and isinstance(is_rule.get("value"), dict):
+                    is_val = float(is_rule["value"].get("rate", 0.0))
+                    base_mode = str(is_rule["value"].get("base", "ht"))
+                    is_base_amount = ht_base if base_mode == "ht" else prop_abs
+                    expected_is_part = round(is_base_amount * is_val, 2)
+                    expected_combined = round(expected_vat_part + expected_is_part, 2)
+                    if abs(diff - expected_combined) <= 0.01:
+                        vat_pct = f"{frac:.0%}"
+                        is_pct = f"{is_val:.0%}"
+                        score = 0.96 if (delta_days <= 30 or token_overlap) else 0.91
+                        return MatchCandidate(
+                            score=round(score, 4),
+                            reasons=[
+                                f"Retenues combinées détectées : TVA ({vat_pct}) et IS ({is_pct})",
+                                f"Montant TTC facture : {prop_abs:.2f} MAD (HT : {ht_base:.2f} MAD, TVA : {proposal.vat_mad:.2f} MAD)",
+                                f"Encaissement bancaire : {bank_abs:.2f} MAD",
+                                f"Retenue totale déduite : {diff:.2f} MAD (TVA : {expected_vat_part:.2f} MAD, IS : {expected_is_part:.2f} MAD)",
+                                "Écart catégorisé en retenue combinée (révision humaine requise)",
+                            ],
+                            difference_mad=diff,
+                            difference_kind="withholding_other",
+                            bank_items=[bank_tx],
+                            proposal_items=[proposal],
+                            explanation=f"Paiement net correspondant au TTC déduction faite de la retenue TVA ({vat_pct}) et de la retenue IS ({is_pct}).",
+                        )
+
+    # 3. TVA Retenue à la source seule (vat_withheld)
+    # Encaissement net = TTC - (vat_rate * TVA)
     if diff > 0 and proposal.vat_mad > 0:
         for frac in withheld_fractions:
             expected_withheld = round(proposal.vat_mad * frac, 2)
@@ -126,33 +169,36 @@ def match_single_pair(
                     explanation=f"Paiement net correspondant au TTC déduction faite de {pct_str} de retenue à la source TVA.",
                 )
 
-    # 3. Autre retenue à la source légale (withholding_other : IS 5% services / loyers LF 2026)
-    if diff > 0:
+    # 4. Retenue à la source IS seule (withholding_other : IS 5% services / loyers LF 2026 sur base HT)
+    # Encaissement net = TTC - (is_rate * HT)
+    if diff > 0 and ht_base > 0:
         for rule_key in ("withholding.is.services_5pct", "withholding.is.rents_5pct"):
             is_rule = pack.get_rule(rule_key)
             if is_rule and isinstance(is_rule.get("value"), dict):
                 is_val = float(is_rule["value"].get("rate", 0.0))
-                expected_is_withheld = round(prop_abs * is_val, 2)
+                base_mode = str(is_rule["value"].get("base", "ht"))
+                is_base_amount = ht_base if base_mode == "ht" else prop_abs
+                expected_is_withheld = round(is_base_amount * is_val, 2)
                 if abs(diff - expected_is_withheld) <= 0.01:
                     pct_str = f"{is_val:.0%}"
                     score = 0.93 if (delta_days <= 30 or token_overlap) else 0.88
                     return MatchCandidate(
                         score=round(score, 4),
                         reasons=[
-                            f"Retenue à la source IS détectée ({pct_str})",
-                            f"Montant TTC facture : {prop_abs:.2f} MAD",
+                            f"Retenue à la source IS détectée ({pct_str}) sur base HT",
+                            f"Montant TTC facture : {prop_abs:.2f} MAD (HT : {is_base_amount:.2f} MAD)",
                             f"Encaissement bancaire : {bank_abs:.2f} MAD",
-                            f"Retenue : {diff:.2f} MAD",
+                            f"Retenue IS : {diff:.2f} MAD",
                             "Écart catégorisé en retenue à la source (révision humaine requise)",
                         ],
                         difference_mad=diff,
                         difference_kind="withholding_other",
                         bank_items=[bank_tx],
                         proposal_items=[proposal],
-                        explanation=f"Paiement net correspondant au TTC déduction faite de la retenue à la source IS {pct_str} (LF 2026).",
+                        explanation=f"Paiement net correspondant au TTC déduction faite de la retenue à la source IS {pct_str} assise sur le montant HT (LF 2026).",
                     )
 
-    # 4. Small bank fee deduction (difference between 1 and 100 MAD on wire)
+    # 5. Small bank fee deduction (difference between 1 and 100 MAD on wire)
     if 0 < diff <= 100.0 and ("vir" in bank_tx.label.lower() or "commission" in bank_tx.label.lower()):
         return MatchCandidate(
             score=0.90,

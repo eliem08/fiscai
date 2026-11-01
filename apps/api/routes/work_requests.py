@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from typing import Annotated, Any
 
@@ -266,32 +265,15 @@ async def list_documents(
         return {"items": items}
 
 
-@router.get("/work-requests/{id}/issues")
+@router.get("/work-requests/{id}/issues", operation_id="listWorkRequestIssues")
 async def list_issues(
     id: uuid.UUID,
     session: Annotated[UserSession, Depends(get_current_session)],
     conn: Annotated[psycopg.Connection, Depends(get_db)],
 ) -> dict[str, Any]:
-    _resolve_work_request_scope(conn, session, id)
+    scoped = _resolve_work_request_scope(conn, session, id)
+    client_id = uuid.UUID(scoped["client_entity_id"])
 
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT id, document_id, code, severity, status, details
-            FROM issues
-            WHERE tenant_id = %s AND work_request_id = %s
-            ORDER BY created_at DESC;
-            """,
-            (session.tenant_id, id),
-        )
-        items = []
-        for r in cur.fetchall():
-            items.append({
-                "id": str(r[0]),
-                "document_id": str(r[1]) if r[1] else None,
-                "code": r[2],
-                "severity": r[3],
-                "status": r[4],
-                "details": r[5] if isinstance(r[5], dict) else json.loads(r[5]),
-            })
-        return {"items": items}
+    from avenel.issues.service import list_work_request_issues
+    items = list_work_request_issues(conn, session.tenant_id, client_id, id)
+    return {"items": items}

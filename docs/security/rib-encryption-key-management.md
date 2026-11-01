@@ -33,3 +33,4 @@ Dans AVENEL :
 Au démarrage de l'API FastAPI (`apps/api/main.py`), la fonction `get_rib_encryption_raw_key()` est invoquée :
 - Si ni `AVENEL_RIB_KEY_FILE` (fichier existant et non vide) ni `AVENEL_KMS_KEY` ne sont configurés, l'application lève une exception fatale `RibKeyMissingError` et refuse de démarrer.
 - Aucun secret par défaut en dur n'est autorisé.
+

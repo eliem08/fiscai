@@ -296,7 +296,7 @@ def test_reconciliation_withheld_vat_unmapped_account_raises_account_unmapped_is
 
     client = create_client_entity(db_conn, tenant_id, "Client Sans Retenue SARL", actor_id=str(user_id))
     # Standard tax mappings seeded, but WITHOUT withholding mapping!
-    seed_approved_client_tax_mappings(db_conn, tenant_id, client.id, approver_id=user_id)
+    seed_approved_client_tax_mappings(db_conn, tenant_id, client.id, approver_id=user_id, include_withholding=False)
 
     prefix = "0117800001234567890123"
     key = compute_moroccan_rib_key(prefix)
@@ -548,25 +548,27 @@ Date,Libelle,Debit,Credit
 
 
 def test_reconciliation_withholding_other_5_pct_is_detected(recon_test_env, db_conn):
-    """LF 2026 5% IS withholding on listed services/rents produces difference_kind 'withholding_other'."""
+    """LF 2026 5% IS withholding on listed services/rents (base HT) produces difference_kind 'withholding_other'."""
     tenant_id = recon_test_env["tenant_id"]
     client_id = recon_test_env["client_id"]
     wr_id = recon_test_env["work_request_id"]
     bank_acc_id = recon_test_env["bank_account_id"]
     user_id = recon_test_env["user_id"]
 
-    # 1. Invoice TTC: 10,000.00 MAD (5% IS withholding = 500.00 MAD)
+    # 1. Invoice: HT 10,000.00, TVA 2,000.00, TTC 12,000.00 MAD.
+    # 5% IS withholding on HT = 500.00 MAD.
+    # Expected receipt: 12,000 - 500 = 11,500.00 MAD.
     inv = {
         "invoice_number": {"value": "FA-SERVICE-2026-001"},
         "invoice_date": {"value": "2026-03-05"},
         "supplier_name": {"value": "Client Prestation SARL"},
-        "total_ht": {"value": 8333.33},
-        "total_vat": {"value": 1666.67},
-        "total_ttc": {"value": 10000.00},
+        "total_ht": {"value": 10000.00},
+        "total_vat": {"value": 2000.00},
+        "total_ttc": {"value": 12000.00},
     }
-    prop_id = _seed_document_and_proposal(db_conn, tenant_id, client_id, wr_id, "invoice_sale", inv)
+    _seed_document_and_proposal(db_conn, tenant_id, client_id, wr_id, "invoice_sale", inv)
 
-    # 2. Bank receipt of 9,500.00 MAD (10,000 - 500)
+    # 2. Bank receipt of 11,500.00 MAD (12,000 - 500)
     doc_id = uuid.uuid4()
     with db_conn.cursor() as cur:
         cur.execute(
@@ -577,9 +579,9 @@ def test_reconciliation_withholding_other_5_pct_is_detected(recon_test_env, db_c
             (doc_id, tenant_id, client_id, wr_id),
         )
     csv_bytes = b"""# Solde initial: 100000.00
-# Solde final: 109500.00
+# Solde final: 111500.00
 Date,Libelle,Debit,Credit
-2026-03-08,VIR ENCAISSEMENT CLIENT SERVICE PRESTATION,0.00,9500.00
+2026-03-08,VIR ENCAISSEMENT CLIENT SERVICE PRESTATION,0.00,11500.00
 """
     ingest_bank_statement(
         conn=db_conn,
@@ -600,4 +602,63 @@ Date,Libelle,Debit,Credit
     m = withholding_other_matches[0]
     assert m["difference_mad"] == 500.00
     assert m["difference_kind"] == "withholding_other"
+
+
+def test_reconciliation_combined_withholding_is_and_vat_detected(recon_test_env, db_conn):
+    """Combined withholding (75% TVA + 5% IS sur HT) produces difference_kind 'withholding_other'."""
+    tenant_id = recon_test_env["tenant_id"]
+    client_id = recon_test_env["client_id"]
+    wr_id = recon_test_env["work_request_id"]
+    bank_acc_id = recon_test_env["bank_account_id"]
+    user_id = recon_test_env["user_id"]
+
+    # Invoice: HT 10,000.00, TVA 2,000.00, TTC 12,000.00 MAD.
+    # 75% TVA withheld = 1,500.00 MAD.
+    # 5% IS on HT = 500.00 MAD.
+    # Combined withheld: 2,000.00 MAD.
+    # Expected receipt: 12,000 - 2,000 = 10,000.00 MAD.
+    inv = {
+        "invoice_number": {"value": "FA-COMBINED-2026-002"},
+        "invoice_date": {"value": "2026-03-07"},
+        "supplier_name": {"value": "Client Consulting SARL"},
+        "total_ht": {"value": 10000.00},
+        "total_vat": {"value": 2000.00},
+        "total_ttc": {"value": 12000.00},
+    }
+    _seed_document_and_proposal(db_conn, tenant_id, client_id, wr_id, "invoice_sale", inv)
+
+    doc_id = uuid.uuid4()
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO documents (id, tenant_id, client_entity_id, work_request_id, doc_type, original_filename, source_channel, status)
+            VALUES (%s, %s, %s, %s, 'bank_statement', 'releve_combined.csv', 'console', 'received');
+            """,
+            (doc_id, tenant_id, client_id, wr_id),
+        )
+    csv_bytes = b"""# Solde initial: 100000.00
+# Solde final: 110000.00
+Date,Libelle,Debit,Credit
+2026-03-10,VIR ENCAISSEMENT CLIENT CONSULTING,0.00,10000.00
+"""
+    ingest_bank_statement(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        client_entity_id=client_id,
+        bank_account_id=bank_acc_id,
+        document_id=doc_id,
+        file_bytes=csv_bytes,
+        filename="releve_combined.csv",
+        work_request_id=wr_id,
+        actor_id=str(user_id),
+    )
+
+    matches = generate_reconciliation_matches(db_conn, tenant_id, client_id, wr_id, date_window_days=60)
+    combined_matches = [m for m in matches if m.get("difference_kind") == "withholding_other"]
+
+    assert len(combined_matches) >= 1
+    m = [m for m in combined_matches if m["difference_mad"] == 2000.00][0]
+    assert m["difference_mad"] == 2000.00
+    assert m["difference_kind"] == "withholding_other"
+
 

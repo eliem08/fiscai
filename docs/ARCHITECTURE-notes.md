@@ -134,3 +134,51 @@ Pour garantir une séparation stricte entre les pièces justificatives et les fo
 - L'approbation comptable intervient exclusivement au niveau global du dossier mensuel de révision (*Monthly File Review*, Phase 5 per Part G).
 - Dans l'interface utilisateur de révision des propositions (`ProposalReview`), la touche `Entrée` permet uniquement de **confirmer la ligne focalisée** (toast : *« Ligne confirmée »*). Aucun chemin clavier ne permet de valider ou approuver une écriture.
 - Les vérifications de rôles sont renommées pour cibler la permission **`edit_proposals`** (`owner`, `manager`, `accountant`).
+
+---
+
+## 11. Empreinte Numérique Déterministe (`subject_hash`) et Intégrité Cryptographique (D.4)
+
+L'empreinte numérique du dossier mensuel (`subject_hash`) garantit l'intégrité absolue et l'immuabilité des écritures et rapprochements validés (Invariant #7).
+
+### 11.1 Champs inclus dans le calcul du hachage
+Le hachage est calculé via SHA-256 sur la sérialisation canonique JSON (clés triées, sans espace, montants décimaux formatés avec 2 décimales) des structures suivantes :
+
+1. **Propositions comptables actives (`journal_proposals`)** (triées par `id`) :
+   - `id` : identifiant UUID canonique de la proposition
+   - `journal_code` : code journal comptable (`ACH`, `VTE`, `BQ`, `OD`)
+   - `entry_date` : date comptable au format ISO-8601 (`YYYY-MM-DD`)
+   - `label` : libellé de l'écriture
+   - `source_document_id` : identifiant du document source ou `null`
+   - `source_bank_transaction_id` : identifiant de la ligne bancaire source ou `null`
+   - `rule_refs` : liste triée des références réglementaires appliquées
+   - `lines` : lignes d'écriture ordonnées par `line_no` croissant :
+     - `line_no` : numéro de ligne (entier $\ge 1$)
+     - `account_code` : code du compte général CGNC (ex. `6111000`)
+     - `label` : libellé de la ligne
+     - `currency` : devise de transaction (`MAD`, `EUR`, `USD`)
+     - `debit_mad` : montant débit en MAD avec 2 décimales
+     - `credit_mad` : montant crédit en MAD avec 2 décimales
+     - `counterparty_id` : identifiant du compte tiers auxiliaire ou `null`
+
+2. **Rapprochements bancaires acceptés (`reconciliation_matches`)** (triés par `id`) :
+   - `id` : identifiant UUID du rapprochement accepté
+   - `difference_kind` : typologie de l'écart (`none`, `vat_withheld`, `bank_fee`, `fx`, `rounding`)
+   - `difference_mad` : montant de l'écart avec 2 décimales
+   - `items` : items constitutifs du match ordonnés par `(bank_transaction_id, journal_proposal_id)` :
+     - `bank_transaction_id` : identifiant de la transaction bancaire ou `null`
+     - `journal_proposal_id` : identifiant de la proposition liée ou `null`
+     - `amount_mad` : montant rapproché en MAD avec 2 décimales
+
+### 11.2 Champs volatils formellement exclus du hachage
+Pour assurer que la transition d'état au moment de l'approbation n'altère pas l'empreinte :
+- **`status`** : exclu (la proposition passe de `proposed` à `approved` sans modifier le `subject_hash`)
+- **Horodatages** : `created_at`, `updated_at`, `decided_at`
+- **Acteurs** : `decided_by`, `last_edited_by`
+- **Compteurs de révision** : `revision`
+
+### 11.3 Règle de décision et détection de fraîcheur
+- Le corps de la requête `POST /v1/approvals/{id}:decide` exige obligatoirement le champ `subject_hash`.
+- Si l'empreinte soumise ne correspond pas à l'empreinte recalculée en direct sur les propositions et rapprochements actifs, l'API renvoie une erreur `409 Conflict` (`ApprovalStaleError`).
+- Toute modification ultérieure d'un rapprochement accepté ou d'une écriture entraîne le refus immédiat de l'export (`ExportHashMismatchError`, Invariant #7).
+

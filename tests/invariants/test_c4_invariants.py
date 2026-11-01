@@ -1,5 +1,6 @@
 """Database tests for ARCHITECTURE.md C.4 Invariants #2, #7, #8, #9."""
 
+import datetime
 import uuid
 
 import psycopg
@@ -194,8 +195,199 @@ def test_export_fk_requires_approval(db_conn: psycopg.Connection):
     db_conn.rollback()
 
 
-@pytest.mark.skip(reason="Phase 5 Exit Criterion: Invariant #7 export refused when proposal hash changed")
-def test_invariant_7_export_refused_on_hash_mismatch():
+from avenel.approvals.service import (
+    decide_work_request_approval,
+    request_work_request_approval,
+)
+from avenel.clients.service import create_client_entity
+from avenel.exports.service import (
+    ExportHashMismatchError,
+    create_export,
+    create_or_get_default_export_profile,
+)
+from avenel.periods.service import open_accounting_period
+from avenel.tenancy.auth import set_rls_context
+from tests.helpers import seed_membership, seed_tenant, seed_user
+
+
+def test_invariant_7_export_refused_on_hash_mismatch(db_conn: psycopg.Connection):
     """Invariant #7: Export refused when proposal hash changed between approval and export (Phase 5)."""
-    pass
+    tenant_id = seed_tenant(db_conn, "Cabinet Invariant 7 Audit")
+
+    preparer_sub = f"prep-{uuid.uuid4()}"
+    preparer_id = seed_user(db_conn, identity_subject=preparer_sub, email=f"{preparer_sub}@avenel.ma")
+    seed_membership(db_conn, preparer_id, tenant_id, "accountant")
+
+    decider_sub = f"decider-{uuid.uuid4()}"
+    decider_id = seed_user(db_conn, identity_subject=decider_sub, email=f"{decider_sub}@avenel.ma")
+    seed_membership(
+        db_conn,
+        decider_id,
+        tenant_id,
+        "owner",
+        professional_title="expert_comptable",
+        professional_registration_no="OEC-998877",
+    )
+
+    set_rls_context(db_conn, tenant_id, preparer_id)
+
+    client = create_client_entity(db_conn, tenant_id, "Atlas Trading SARL", actor_id=str(preparer_id))
+    period = open_accounting_period(
+        db_conn,
+        tenant_id,
+        client.id,
+        actor_id=str(preparer_id),
+        period_code="2026-09",
+        starts_on=datetime.date(2026, 9, 1),
+        ends_on=datetime.date(2026, 9, 30),
+        fiscal_year_end=datetime.date(2026, 12, 31),
+    )
+
+    wr_id = uuid.uuid4()
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO work_requests (id, tenant_id, client_entity_id, accounting_period_id, service_code, status)
+            VALUES (%s, %s, %s, %s, 'monthly_bookkeeping', 'intake');
+            """,
+            (wr_id, tenant_id, client.id, period["id"]),
+        )
+
+    # Seed accounts
+    acc_6111 = uuid.uuid4()
+    acc_4411 = uuid.uuid4()
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO chart_accounts (id, tenant_id, client_entity_id, account_code, label, source)
+            VALUES (%s, %s, %s, '6111000', 'Achats de marchandises', 'cgnc_seed'),
+                   (%s, %s, %s, '4411000', 'Fournisseurs', 'cgnc_seed');
+            """,
+            (acc_6111, tenant_id, client.id, acc_4411, tenant_id, client.id),
+        )
+
+    # Seed a balanced proposal
+    prop_id = uuid.uuid4()
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO journal_proposals (
+                id, tenant_id, client_entity_id, work_request_id, revision,
+                journal_code, entry_date, label, proposed_by, status
+            )
+            VALUES (%s, %s, %s, %s, 1, 'ACH', '2026-09-15', 'Achat fournitures', 'rules', 'proposed');
+            """,
+            (prop_id, tenant_id, client.id, wr_id),
+        )
+        cur.execute(
+            """
+            INSERT INTO journal_lines (
+                id, tenant_id, client_entity_id, journal_proposal_id, line_no,
+                account_id, account_code, label, currency, debit_tx, credit_tx, debit_mad, credit_mad
+            )
+            VALUES (%s, %s, %s, %s, 1, %s, '6111000', 'Achats', 'MAD', 2400.00, 0.00, 2400.00, 0.00),
+                   (%s, %s, %s, %s, 2, %s, '4411000', 'Fournisseurs', 'MAD', 0.00, 2400.00, 0.00, 2400.00);
+            """,
+            (uuid.uuid4(), tenant_id, client.id, prop_id, acc_6111, uuid.uuid4(), tenant_id, client.id, prop_id, acc_4411),
+        )
+    db_conn.commit()
+
+    # 1. Request approval (preparer)
+    app_res = request_work_request_approval(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        client_entity_id=client.id,
+        work_request_id=wr_id,
+        prepared_by=preparer_id,
+    )
+    approval_id = uuid.UUID(app_res["id"])
+    approved_hash = app_res["subject_hash"]
+
+    # 2. Decide approval (decider - segregated)
+    set_rls_context(db_conn, tenant_id, decider_id)
+    dec_res = decide_work_request_approval(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        approval_id=approval_id,
+        decider_id=decider_id,
+        decision="approved",
+        reason="Dossier vérifié et équilibré",
+        expected_subject_hash=approved_hash,
+    )
+    assert dec_res["status"] == "approved"
+    db_conn.commit()
+
+    # 3. Create default export profile
+    prof = create_or_get_default_export_profile(db_conn, tenant_id, "sage100_csv")
+    prof_id = prof["id"]
+    db_conn.commit()
+
+    # 4. Simulate hash mismatch (e.g. data tampered or subject_hash out of sync with proposals)
+    tampered_hash = "0" * 64
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "UPDATE approvals SET subject_hash = %s WHERE tenant_id = %s AND id = %s;",
+            (tampered_hash, tenant_id, approval_id),
+        )
+    db_conn.commit()
+
+    # 5. Invariant #7: Export MUST be refused with ExportHashMismatchError!
+    with pytest.raises(ExportHashMismatchError) as exc_info:
+        create_export(
+            conn=db_conn,
+            tenant_id=tenant_id,
+            client_entity_id=client.id,
+            work_request_id=wr_id,
+            approval_id=approval_id,
+            export_profile_id=prof_id,
+            actor_id=str(decider_id),
+        )
+    assert "Le dossier a changé depuis la validation" in str(exc_info.value)
+    db_conn.rollback()
+
+    # 6. Revert subject_hash so hash matches the actual proposals again
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "UPDATE approvals SET subject_hash = %s WHERE tenant_id = %s AND id = %s;",
+            (approved_hash, tenant_id, approval_id),
+        )
+    db_conn.commit()
+
+    # 7. With matching hash, export succeeds cleanly!
+    exp = create_export(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        client_entity_id=client.id,
+        work_request_id=wr_id,
+        approval_id=approval_id,
+        export_profile_id=prof_id,
+        actor_id=str(decider_id),
+    )
+    assert exp["status"] == "ready"
+    assert exp["subject_hash"] == approved_hash
+
+    # Verify usage record inserted
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT unit, quantity, billable
+            FROM usage_records
+            WHERE tenant_id = %s AND work_request_id = %s;
+            """,
+            (tenant_id, wr_id),
+        )
+        usage = cur.fetchone()
+        assert usage is not None
+        assert usage[0] == "monthly_file"
+        assert float(usage[1]) == 1.0
+        assert usage[2] is True
+
+        # Verify export profile verified_round_trip_at is NOT modified by export (requirement #1)
+        cur.execute(
+            "SELECT verified_round_trip_at FROM export_profiles WHERE tenant_id = %s AND id = %s;",
+            (tenant_id, prof_id),
+        )
+        verified_at = cur.fetchone()[0]
+        assert verified_at is None
+
 

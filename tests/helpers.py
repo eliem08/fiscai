@@ -49,15 +49,17 @@ def seed_membership(
     user_id: uuid.UUID,
     tenant_id: uuid.UUID,
     role: str = "accountant",
+    professional_title: str | None = None,
+    professional_registration_no: str | None = None,
 ) -> uuid.UUID:
     m_id = uuid.uuid4()
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO memberships (id, user_id, tenant_id, role, status)
-            VALUES (%s, %s, %s, %s, 'active');
+            INSERT INTO memberships (id, user_id, tenant_id, role, status, professional_title, professional_registration_no)
+            VALUES (%s, %s, %s, %s, 'active', %s, %s);
             """,
-            (m_id, user_id, tenant_id, role),
+            (m_id, user_id, tenant_id, role, professional_title, professional_registration_no),
         )
     conn.commit()
     return m_id

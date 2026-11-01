@@ -259,6 +259,7 @@ def seed_approved_client_tax_mappings(
     tenant_id: uuid.UUID,
     client_entity_id: uuid.UUID,
     approver_id: uuid.UUID | None = None,
+    include_withholding: bool = True,
 ) -> None:
     """Helper to seed approved tax mappings for a client entity (used for setups and testing)."""
     user_id = approver_id or uuid.uuid4()
@@ -293,6 +294,9 @@ def seed_approved_client_tax_mappings(
     acc_6588 = _ensure_acc("6588", "Charges / Produits d'arrondi (centimes)")
     acc_6331 = _ensure_acc("6331", "Pertes de change sur arrondis")
     acc_7331 = _ensure_acc("7331", "Gains de change sur arrondis")
+    acc_4711 = _ensure_acc("4711", "Compte d'attente (opérations à régulariser)")
+    acc_3457 = _ensure_acc("3457", "État - Retenues à la source")
+    acc_6147 = _ensure_acc("6147", "Services bancaires")
 
     mappings = [
         ("STANDARD_20", "purchase", acc_34552),
@@ -307,7 +311,11 @@ def seed_approved_client_tax_mappings(
         ("ROUNDING", "rounding", acc_6588),
         ("ROUNDING_LOSS", "rounding_loss", acc_6331),
         ("ROUNDING_GAIN", "rounding_gain", acc_7331),
+        ("SUSPENSE", "suspense", acc_4711),
+        ("BANK_FEE", "bank_fee", acc_6147),
     ]
+    if include_withholding:
+        mappings.append(("WITHHOLDING", "withholding", acc_3457))
 
     with conn.cursor() as cur:
         for tax_code, direction, acc_id in mappings:

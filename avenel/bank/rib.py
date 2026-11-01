@@ -38,8 +38,36 @@ def get_known_bank_codes() -> dict[str, str]:
     pack = get_jurisdiction_pack()
     rule = pack.get_rule("identifiers.rib.bank_codes")
     if rule and isinstance(rule.get("value"), dict):
-        return {str(k): str(v) for k, v in rule["value"].items()}
+        result = {}
+        for k, v in rule["value"].items():
+            if isinstance(v, dict):
+                result[str(k)] = str(v.get("name", ""))
+            else:
+                result[str(k)] = str(v)
+        return result
     return {}
+
+
+def validate_bank_code(code_or_rib: str) -> tuple[bool, str | None]:
+    """Validates bank code against pack.
+
+    Rule: While identifiers.rib.bank_codes has status 'needs_expert',
+    an unlisted bank code emits a warning only, never a rejection.
+    Returns (is_valid, warning_message).
+    """
+    bank_code = extract_bank_code(code_or_rib) if len(clean_rib(code_or_rib)) >= 24 else code_or_rib.strip()
+    known = get_known_bank_codes()
+    if bank_code in known:
+        return True, None
+
+    pack = get_jurisdiction_pack()
+    rule = pack.get_rule("identifiers.rib.bank_codes")
+    is_needs_expert = rule and rule.get("status") == "needs_expert"
+    msg = f"Avertissement : Le code banque '{bank_code}' n'est pas répertorié dans le pack de juridiction."
+    if is_needs_expert:
+        # Warning only, never a rejection while needs_expert
+        return True, msg
+    return False, msg
 
 
 def extract_bank_code(rib: str) -> str:

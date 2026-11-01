@@ -40,20 +40,47 @@
 
 - key: "identifiers.rib.bank_codes"
   value:
-    "007": "Attijariwafa bank"
-    "011": "Bank of Africa"
-    "013": "Banque Populaire"
-    "019": "BMCI"
-    "021": "Crédit Agricole du Maroc"
-    "022": "Société Générale Maroc"
-    "050": "Al Barid Bank"
-    "230": "CIH Bank"
-    "310": "CFG Bank"
+    "007":
+      name: "Attijariwafa bank"
+      status: "needs_expert"
+      source: "TODO(EXPERT)"
+    "011":
+      name: "Bank of Africa"
+      status: "needs_expert"
+      source: "TODO(EXPERT)"
+    "013":
+      name: "BMCI"
+      status: "needs_expert"
+      source: "TODO(EXPERT)"
+    "021":
+      name: "Crédit Agricole du Maroc"
+      status: "needs_expert"
+      source: "TODO(EXPERT)"
+    "022":
+      name: "Société Générale Maroc"
+      status: "needs_expert"
+      source: "TODO(EXPERT)"
+    "050":
+      name: "Al Barid Bank"
+      status: "needs_expert"
+      source: "TODO(EXPERT)"
+    "101":
+      name: "Banque Populaire"
+      status: "needs_expert"
+      source: "TODO(EXPERT)"
+    "230":
+      name: "CIH Bank"
+      status: "needs_expert"
+      source: "TODO(EXPERT)"
+    "310":
+      name: "CFG Bank"
+      status: "needs_expert"
+      source: "TODO(EXPERT)"
   effective_from: "2000-01-01"
   effective_to: null
-  source: "Bank Al-Maghrib - Nomenclature des codes guichets et banques"
+  source: "TODO(EXPERT)"
   status: "needs_expert"
-  note: "TODO(EXPERT): Codes banques marocaines (BAM). Le code CIH (230 vs 004/007) est soumis à validation expert."
+  note: "TODO(EXPERT): Codes banques marocaines (BAM). Liste complète marquée needs_expert jusqu'à vérification officielle BAM. Conflits identifiés : 013 est BMCI (et non Banque Populaire ; BP utilise des codes régionaux 1xx comme 101), 022 est Société Générale (et non Crédit Agricole)."
 
 
 - key: "identifiers.rc.format"

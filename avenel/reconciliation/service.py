@@ -120,7 +120,11 @@ def generate_reconciliation_matches(
                    COALESCE(
                        (SELECT sum(GREATEST(debit_mad, credit_mad)) FROM journal_lines jpl WHERE jpl.journal_proposal_id = jp.id AND jpl.counterparty_id IS NOT NULL),
                        0
-                   ) as total_ttc_mad
+                   ) as total_ttc_mad,
+                   COALESCE(
+                       (SELECT sum(GREATEST(debit_mad, credit_mad)) FROM journal_lines jpl WHERE jpl.journal_proposal_id = jp.id AND (jpl.account_code LIKE '61%%' OR jpl.account_code LIKE '71%%')),
+                       0
+                   ) as ht_mad
             FROM journal_proposals jp
             WHERE jp.tenant_id = %s AND jp.client_entity_id = %s AND jp.work_request_id = %s
               AND jp.id NOT IN (
@@ -142,6 +146,7 @@ def generate_reconciliation_matches(
             date=r[1],
             label=r[2],
             vat_mad=float(r[4]),
+            ht_mad=float(r[6]),
         )
         for r in jp_rows
     ]
@@ -450,6 +455,29 @@ def accept_reconciliation_match(
             (tenant_id, bt_ids, match_id),
         )
 
+        cur.execute(
+            """
+            SELECT client_entity_id, work_request_id
+            FROM reconciliation_matches
+            WHERE tenant_id = %s AND id = %s;
+            """,
+            (tenant_id, match_id),
+        )
+        match_meta = cur.fetchone()
+
+    if match_meta:
+        from avenel.proposals.bank_proposals import (
+            transition_bq_proposals_on_match_accepted,
+        )
+
+        transition_bq_proposals_on_match_accepted(
+            conn=conn,
+            tenant_id=tenant_id,
+            client_entity_id=match_meta[0],
+            work_request_id=match_meta[1],
+            match_id=match_id,
+        )
+
     _record_audit_event(
         conn=conn,
         tenant_id=tenant_id,
@@ -492,6 +520,29 @@ def reject_reconciliation_match(
         row = cur.fetchone()
         if not row:
             raise ValueError(f"Match {match_id} not found")
+
+        cur.execute(
+            """
+            SELECT client_entity_id, work_request_id
+            FROM reconciliation_matches
+            WHERE tenant_id = %s AND id = %s;
+            """,
+            (tenant_id, match_id),
+        )
+        match_meta = cur.fetchone()
+
+    if match_meta:
+        from avenel.proposals.bank_proposals import (
+            transition_bq_proposals_on_match_rejected,
+        )
+
+        transition_bq_proposals_on_match_rejected(
+            conn=conn,
+            tenant_id=tenant_id,
+            client_entity_id=match_meta[0],
+            work_request_id=match_meta[1],
+            match_id=match_id,
+        )
 
     _record_audit_event(
         conn=conn,

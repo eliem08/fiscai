@@ -31,31 +31,34 @@
   value:
     partial: 0.75
     full: 1.00
+    base: "tva"
   effective_from: "2024-01-01"
   effective_to: null
   source: "Loi de Finances 2024 / CGI art. 117"
   status: "verified"
-  note: "Taux légaux de retenue à la source de TVA : 75% ou 100%"
+  note: "Taux légaux de retenue à la source de TVA : 75% ou 100%. Assiette de retenue : montant de la TVA."
 
 - key: "withholding.is.services_5pct"
   value:
     rate: 0.05
+    base: "ht"
     difference_kind: "withholding_other"
     applies_to: "listed_services"
   effective_from: "2026-01-01"
   effective_to: null
   source: "Loi de Finances 2026 / CGI art. 45 bis / 15 bis"
   status: "needs_expert"
-  note: "TODO(EXPERT): Retenue à la source IS 5% sur rémunérations de prestations de services (LF 2026)"
+  note: "TODO(EXPERT): Retenue à la source IS 5% sur rémunérations de prestations de services (LF 2026). Assiette HT."
 
 - key: "withholding.is.rents_5pct"
   value:
     rate: 0.05
+    base: "ht"
     difference_kind: "withholding_other"
     applies_to: "rents"
   effective_from: "2026-01-01"
   effective_to: null
   source: "Loi de Finances 2026 / CGI art. 45 bis / 15 bis"
   status: "needs_expert"
-  note: "TODO(EXPERT): Retenue à la source IS 5% sur loyers (LF 2026)"
+  note: "TODO(EXPERT): Retenue à la source IS 5% sur loyers (LF 2026). Assiette HT."
 

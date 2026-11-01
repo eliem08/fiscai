@@ -269,3 +269,114 @@ def test_golden_bank_proposal_unmatched_line_with_suspense_account():
     assert res.issues_to_raise[0]["code"] == "BANK_LINE_UNMATCHED"
     assert res.issues_to_raise[0]["severity"] == "review"
     assert res.issues_to_raise[0]["subject_bank_transaction_id"] == tx_id
+
+
+def test_golden_bank_proposal_customer_receipt_is_only_withholding():
+    """Customer receipt with IS 5% withholding only (LF 2026):
+
+    HT = 10,000 MAD, TVA = 2,000 MAD, TTC = 12,000 MAD.
+    IS 5% on HT = 500 MAD.
+    Net bank receipt = 11,500 MAD.
+    Journal proposal:
+      Dr Bank: 11,500 MAD
+      Dr Withholding receivable: 500 MAD
+      Cr Customer: 12,000 MAD (Full TTC)
+    """
+    tenant_id = uuid.uuid4()
+    client_id = uuid.uuid4()
+    tx_id = uuid.uuid4()
+    customer_acc_id = uuid.uuid4()
+    bank_acc_id = uuid.uuid4()
+    withholding_acc_id = uuid.uuid4()
+    customer_id = uuid.uuid4()
+
+    inp = BankLineProposalInput(
+        tenant_id=tenant_id,
+        client_entity_id=client_id,
+        work_request_id=uuid.uuid4(),
+        bank_account_id=uuid.uuid4(),
+        bank_transaction_id=tx_id,
+        bank_statement_id=uuid.uuid4(),
+        line_index=8,
+        booking_date=datetime.date(2026, 3, 24),
+        amount_mad=11500.00,  # net receipt
+        description="VIR ENCAISSEMENT CLIENT PRESTATION RETENUE IS 5%",
+        journal_code="BQ",
+        bank_ledger_account_id=bank_acc_id,
+        bank_ledger_account_code="5141",
+        pattern="customer_receipt",
+        counterparty_id=customer_id,
+        counterparty_account_id=customer_acc_id,
+        counterparty_account_code="3421",
+        withholding_mad=500.00,  # 5% on HT
+        withholding_account_id=withholding_acc_id,
+        withholding_account_code="3456",
+    )
+
+    res = build_bank_journal_proposal(inp)
+
+    assert len(res.lines) == 3
+    assert res.lines[0].debit_mad == 11500.00
+    assert res.lines[1].debit_mad == 500.00
+    assert res.lines[2].credit_mad == 12000.00
+
+    tot_dr = sum(l.debit_mad for l in res.lines)
+    tot_cr = sum(l.credit_mad for l in res.lines)
+    assert tot_dr == tot_cr == 12000.00
+
+
+def test_golden_bank_proposal_customer_receipt_combined_withholding():
+    """Customer receipt with Combined Withholding (75% TVA + 5% IS on HT):
+
+    HT = 10,000 MAD, TVA = 2,000 MAD, TTC = 12,000 MAD.
+    TVA 75% withheld = 1,500 MAD.
+    IS 5% on HT withheld = 500 MAD.
+    Total withheld = 2,000 MAD.
+    Net bank receipt = 10,000 MAD.
+    Journal proposal:
+      Dr Bank: 10,000 MAD
+      Dr Withholding receivable: 2,000 MAD
+      Cr Customer: 12,000 MAD (Full TTC)
+    """
+    tenant_id = uuid.uuid4()
+    client_id = uuid.uuid4()
+    tx_id = uuid.uuid4()
+    customer_acc_id = uuid.uuid4()
+    bank_acc_id = uuid.uuid4()
+    withholding_acc_id = uuid.uuid4()
+    customer_id = uuid.uuid4()
+
+    inp = BankLineProposalInput(
+        tenant_id=tenant_id,
+        client_entity_id=client_id,
+        work_request_id=uuid.uuid4(),
+        bank_account_id=uuid.uuid4(),
+        bank_transaction_id=tx_id,
+        bank_statement_id=uuid.uuid4(),
+        line_index=9,
+        booking_date=datetime.date(2026, 3, 25),
+        amount_mad=10000.00,  # net receipt
+        description="VIR ENCAISSEMENT CLIENT RETENUES COMBINEES TVA ET IS",
+        journal_code="BQ",
+        bank_ledger_account_id=bank_acc_id,
+        bank_ledger_account_code="5141",
+        pattern="customer_receipt",
+        counterparty_id=customer_id,
+        counterparty_account_id=customer_acc_id,
+        counterparty_account_code="3421",
+        withholding_mad=2000.00,  # 1500 TVA + 500 IS
+        withholding_account_id=withholding_acc_id,
+        withholding_account_code="3456",
+    )
+
+    res = build_bank_journal_proposal(inp)
+
+    assert len(res.lines) == 3
+    assert res.lines[0].debit_mad == 10000.00
+    assert res.lines[1].debit_mad == 2000.00
+    assert res.lines[2].credit_mad == 12000.00
+
+    tot_dr = sum(l.debit_mad for l in res.lines)
+    tot_cr = sum(l.credit_mad for l in res.lines)
+    assert tot_dr == tot_cr == 12000.00
+

@@ -292,6 +292,21 @@ def ingest_bank_statement(
             if r:
                 inserted_tx_ids.append(uuid.UUID(str(r[0])))
 
+    # Generate initial suspense proposal for every bank line ingested in this work request
+    if work_request_id:
+        from avenel.proposals.bank_proposals import (
+            create_initial_suspense_proposal_for_bank_tx,
+        )
+
+        for bt_id in inserted_tx_ids:
+            create_initial_suspense_proposal_for_bank_tx(
+                conn=conn,
+                tenant_id=tenant_id,
+                client_entity_id=client_entity_id,
+                work_request_id=work_request_id,
+                bank_transaction_id=bt_id,
+            )
+
     _record_audit_event(
         conn=conn,
         tenant_id=tenant_id,

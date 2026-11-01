@@ -40,3 +40,28 @@ This file records questions, ambiguities, and chosen restrictive interpretations
   2. **Production Cloud Target**: Production deployments of AVENEL shall NOT self-host community MinIO. Production environments mandate managed S3-compliant object storage services (AWS S3 or Cloudflare R2) or an enterprise-licensed cluster (MinIO Enterprise or Ceph S3) to eliminate AGPLv3 copyleft risk and ensure vendor security patch SLAs.
 - **Status**: Architectural boundary enforced; production target pinned to managed S3/R2.
 
+---
+
+## 6. CGNC Withholding Receivable Account (3457 vs 3452 / 3453 / 3458)
+- **Context**: On customer receipts subject to withholding at source (TVA withholding under LF 2024 / LF 2026 or IS 5% withholding on services), the customer withholds tax and remits it directly to the Trésor. The supplier holds a tax receivable against the State. Test fixtures have historically utilized account code `3457` ("État - Retenues à la source"). However, the standard CGNC (Code Général de Normalisation Comptable, 1989) does not explicitly define `3457`. Possible standard candidates in Class 3 include:
+  - `3452` ("État - Impôts sur les sociétés récupérables" / acomptes)
+  - `3453` ("État - Acomptes sur impôts")
+  - `3458` ("État - Autres comptes débiteurs")
+- **Restrictive Choice**: The code enforces that accounts must resolve strictly through `client_tax_mappings` approved by a human accountant (`direction = 'withholding'`). A hardcoded default is forbidden. A suggested default is surfaced in the UI marked `status: needs_expert` (`TODO(EXPERT)`) and recorded in the expert register until a Moroccan CPA/expert opinion is formalized.
+- **Status**: Marked `needs_expert` in pack and registered in `docs/expert-register.md`.
+
+---
+
+## 7. Default Suspense Account for Bank Transactions (4711)
+- **Context**: For unmatched bank statement lines, a preliminary journal proposal is generated debiting or crediting a suspense account (compte d'attente) to track movements awaiting justification, accompanied by an open `BANK_LINE_UNMATCHED` issue. Under CGNC, account `4711` is commonly designated as "Créditeurs divers - Comptes d'attente (opérations à régulariser)", though some firms prefer `4712` or firm-specific sub-accounts.
+- **Restrictive Choice**: In `jurisdiction/ma/accounting_rules.yaml`, the default suggestion is pinned to `4711` but explicitly flagged `status: needs_expert` (`TODO(EXPERT)`). Accounts must be resolved via `client_tax_mappings` direction `'suspense'`; if missing, the pack default is only used as a non-automatic suggestion and logged as requiring expert confirmation.
+- **Status**: Marked `needs_expert` in pack and registered in `docs/expert-register.md`.
+
+---
+
+## 8. Default Bank Fee / Commission Account (6147)
+- **Context**: When parsing bank statements, bank commissions, agios, and transaction fees are detected. The CGNC establishes subgroup 6147 ("Services bancaires") for bank commissions and account 61472 ("Frais sur effets") or 6311 ("Intérêts des emprunts et dettes").
+- **Restrictive Choice**: BQ proposals for fee lines require explicit mappings in `client_tax_mappings` direction `'bank_fee'`. In `jurisdiction/ma/accounting_rules.yaml`, `accounting.bank_fees.default_account` is assigned `6147` marked `status: needs_expert` (`TODO(EXPERT)`). If unmapped, `ACCOUNT_UNMAPPED` is raised (blocking proposal generation).
+- **Status**: Marked `needs_expert` in pack and registered in `docs/expert-register.md`.
+
+

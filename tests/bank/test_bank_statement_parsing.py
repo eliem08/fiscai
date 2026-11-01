@@ -219,7 +219,7 @@ def test_bank_statement_fixture_stubs_awaiting_real_samples():
     fixtures_dir = pathlib.Path(__file__).parent.parent / "fixtures" / "bank_statements"
     expected_banks = {
         "007": "attijariwafa_stub.json",
-        "013": "bp_stub.json",
+        "101": "bp_stub.json",
         "011": "bank_of_africa_stub.json",
         "230": "cih_stub.json",
     }

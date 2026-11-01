@@ -86,14 +86,19 @@ def test_rib_encryption_roundtrip():
 
 
 def test_known_bank_codes_loaded_from_jurisdiction_pack():
-    """Bank codes are loaded from jurisdiction pack (including CIH marked needs_expert)."""
-    from avenel.bank.rib import get_known_bank_codes
+    """Bank codes are loaded from jurisdiction pack (all marked needs_expert until BAM verification)."""
+    from avenel.bank.rib import get_known_bank_codes, validate_bank_code
     from avenel.jurisdiction.loader import get_jurisdiction_pack
 
     bank_codes = get_known_bank_codes()
     assert "007" in bank_codes
     assert "011" in bank_codes
     assert "013" in bank_codes
+    assert bank_codes["013"] == "BMCI"  # Prior research: 013 is BMCI
+    assert "101" in bank_codes
+    assert bank_codes["101"] == "Banque Populaire"  # BP regional code
+    assert "022" in bank_codes
+    assert bank_codes["022"] == "Société Générale Maroc"
     assert "230" in bank_codes  # CIH Bank
     assert bank_codes["230"] == "CIH Bank"
 
@@ -102,6 +107,12 @@ def test_known_bank_codes_loaded_from_jurisdiction_pack():
     assert rule is not None
     assert rule.get("status") == "needs_expert"
     assert "TODO(EXPERT)" in str(rule.get("note", ""))
+
+    # Bank code validation is a warning, never a rejection, while needs_expert
+    valid, warn = validate_bank_code("999")
+    assert valid is True
+    assert warn is not None
+    assert "Avertissement" in warn
 
 
 def test_app_refuses_to_start_without_rib_encryption_key(monkeypatch, tmp_path):

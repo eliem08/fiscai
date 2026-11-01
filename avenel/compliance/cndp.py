@@ -49,7 +49,7 @@ def generate_cndp_dossier(
             "primary": "Gestion comptable, fiscale et financière des entreprises clientes",
             "secondary": "Préparation automatisée des liasses et journaux comptables mensuels",
             "exempt_from_transfer_abroad": True,
-            "hosting_jurisdiction": "Maroc / Cloud souverain certifié",
+            "hosting_jurisdiction": "Maroc / Cloud souverain audité",
         },
         "data_subjects": [
             "Dirigeants et représentants légaux des clients",

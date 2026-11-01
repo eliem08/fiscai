@@ -1,7 +1,8 @@
 {
   "bank_name": "Banque Populaire",
-  "bank_code": "013",
+  "bank_code": "101",
   "status": "awaiting_real_samples",
+  "notes": "TODO(EXPERT): Banque Populaire uses regional 1xx codes (e.g. 101 BPR); 013 is BMCI.",
   "layout": {
     "header_identifiers": ["BANQUE POPULAIRE", "RELEVE DE COMPTE"],
     "rib_pattern": "RIB\\s*:\\s*([0-9]{24})",
@@ -15,7 +16,7 @@
   },
   "sample_stub_lines": [
     "BANQUE POPULAIRE - RELEVE DE COMPTE",
-    "RIB : 013780000123456789012345",
+    "RIB : 101780000123456789012345",
     "Période du 01/03/2026 au 31/03/2026",
     "SOLDE PRECEDENT AU 01/03/2026 : 84 500,00 MAD",
     "04/03/2026 04/03/2026 CHQ PAYE FOURNISSEUR STE BERBERE 15 200,00",

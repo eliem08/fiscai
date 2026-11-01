@@ -34,6 +34,8 @@ class UserSession:
     full_name: str | None = None
     identity_subject: str = ""
     professional_registration_no: str | None = None
+    auth_time: int | None = None
+    mfa_authenticated: bool = False
 
     def can_access_client(self, client_id: uuid.UUID) -> bool:
         """Determines if the session has access to a specific client company."""
@@ -117,6 +119,25 @@ def resolve_user_session(
                 return None
 
         # Check MFA requirement for professional registration if jwt_claims provided
+        has_mfa = False
+        auth_time = None
+        if jwt_claims is not None:
+            acr = str(jwt_claims.get("acr", "")).lower()
+            mfa_acrs = {"gold", "2", "mfa", "urn:mfa", "urn:oasis:names:tc:saml:2.0:ac:classes:mobiletwofactorunregistered"}
+            if acr in mfa_acrs:
+                has_mfa = True
+            amr = jwt_claims.get("amr", [])
+            if isinstance(amr, list):
+                amr_set = {str(a).lower() for a in amr}
+                if amr_set.intersection({"mfa", "otp", "totp", "sms", "hwk"}):
+                    has_mfa = True
+            raw_auth_time = jwt_claims.get("auth_time")
+            if raw_auth_time is not None:
+                try:
+                    auth_time = int(raw_auth_time)
+                except (ValueError, TypeError):
+                    auth_time = None
+
         if prof_reg_no is not None and jwt_claims is not None:
             from avenel.tenancy.jwt import verify_mfa_requirement
             verify_mfa_requirement(jwt_claims, prof_reg_no)
@@ -131,6 +152,8 @@ def resolve_user_session(
             full_name=full_name,
             identity_subject=identity_subject,
             professional_registration_no=prof_reg_no,
+            auth_time=auth_time,
+            mfa_authenticated=has_mfa,
         )
 
 
