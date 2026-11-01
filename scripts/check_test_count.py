@@ -28,8 +28,8 @@ def get_baseline_count() -> int:
 
 
 def get_collected_count() -> int:
-    # Use sys.executable to run pytest --collect-only -q
-    cmd = [sys.executable, "-m", "pytest", "--collect-only", "-q"]
+    # Use sys.executable to run pytest --collect-only -q (disable external telemetry plugins)
+    cmd = [sys.executable, "-m", "pytest", "-p", "no:opik", "-p", "no:langsmith", "--collect-only", "-q"]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     output = proc.stdout + proc.stderr
     if proc.returncode != 0:

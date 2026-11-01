@@ -147,6 +147,7 @@ export function PortalRequests({
               <h3 className="text-lg font-bold text-slate-900">Répondre au cabinet comptable</h3>
               <button
                 type="button"
+                aria-label="Fermer le dialogue de réponse"
                 onClick={() => setActiveRequest(null)}
                 className="text-slate-400 hover:text-slate-600 text-xl font-bold"
               >
@@ -160,8 +161,9 @@ export function PortalRequests({
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">Votre explication</label>
+              <label htmlFor="portal-explanation-input" className="block text-xs font-semibold text-slate-700">Votre explication</label>
               <textarea
+                id="portal-explanation-input"
                 value={responseText}
                 onChange={(e) => setResponseText(e.target.value)}
                 placeholder="Indiquez ici vos précisions, la nature de l'opération ou les références demandées..."

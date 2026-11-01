@@ -128,3 +128,19 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/avenel
           PYTHON: python
+
+      - name: Build Web Application
+        run: |
+          npm run build
+
+      - name: Run Frontend Tests
+        run: |
+          npm test
+
+      - name: Install Playwright Browsers
+        run: |
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E & Accessibility Suite
+        run: |
+          npx playwright test e2e/accessibility.spec.ts e2e/pilot-journey.spec.ts

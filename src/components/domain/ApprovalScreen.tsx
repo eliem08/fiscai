@@ -360,6 +360,7 @@ export function ApprovalScreen({
                       <div className="flex items-center gap-2 w-full sm:w-auto">
                         <input
                           type="text"
+                          aria-label="Motif d'acceptation de l'anomalie"
                           placeholder="Motif d'acceptation..."
                           value={ackNote}
                           onChange={(e) => setAckNote(e.target.value)}
@@ -441,7 +442,7 @@ export function ApprovalScreen({
             type="button"
             onClick={handleApprove}
             disabled={!canApprove || isLoading}
-            className="flex-1 sm:flex-none px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="flex-1 sm:flex-none px-5 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-medium text-sm transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             <CheckCircle2 className="h-4 w-4" />
             <span>Valider le dossier</span>
@@ -457,6 +458,7 @@ export function ApprovalScreen({
               <h3 className="text-lg font-bold text-slate-900">Motif du refus</h3>
               <button
                 type="button"
+                aria-label="Fermer le dialogue de refus"
                 onClick={() => setShowRejectModal(false)}
                 className="text-slate-400 hover:text-slate-600"
               >
@@ -467,6 +469,7 @@ export function ApprovalScreen({
               Précisez la raison pour laquelle ce dossier est renvoyé au préparateur.
             </p>
             <textarea
+              aria-label="Motif du refus du dossier"
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
               placeholder="Ex : Écart non justifié sur le compte 6111..."

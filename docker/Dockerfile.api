@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1
+# Production Dockerfile for AVENEL API Backend
+# Multi-stage build, non-root execution, minimal attack surface
+
+FROM python:3.12-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Final minimal runtime stage
+FROM python:3.12-slim AS runner
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/home/appuser/.local/bin:$PATH" \
+    PYTHONPATH="/app" \
+    ENV="production"
+
+WORKDIR /app
+
+# Install runtime PostgreSQL client library
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Run as dedicated unprivileged user
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -s /bin/false -m appuser
+
+# Copy installed Python packages from builder
+COPY --from=builder --chown=appuser:appgroup /root/.local /home/appuser/.local
+
+# Copy application source code
+COPY --chown=appuser:appgroup avenel /app/avenel
+COPY --chown=appuser:appgroup apps /app/apps
+COPY --chown=appuser:appgroup jurisdiction /app/jurisdiction
+COPY --chown=appuser:appgroup db /app/db
+COPY --chown=appuser:appgroup contracts /app/contracts
+
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

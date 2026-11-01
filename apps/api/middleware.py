@@ -180,3 +180,120 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         except Exception:
             self.store.release(key)
             raise
+
+
+class RateLimitStore:
+    """Thread-safe sliding-window rate limit store."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._hits: dict[str, list[float]] = {}
+
+    def is_allowed(self, key: str, max_requests: int, window_seconds: int = 60) -> tuple[bool, int, int]:
+        """Checks if request is within limit. Returns (allowed, remaining, retry_after)."""
+        now = time.time()
+        window_start = now - window_seconds
+        with self._lock:
+            timestamps = self._hits.setdefault(key, [])
+            # Prune old timestamps
+            self._hits[key] = [t for t in timestamps if t > window_start]
+            count = len(self._hits[key])
+
+            if count >= max_requests:
+                earliest = self._hits[key][0]
+                retry_after = max(1, int(earliest + window_seconds - now))
+                return False, 0, retry_after
+
+            self._hits[key].append(now)
+            remaining = max_requests - (count + 1)
+            return True, remaining, 0
+
+    def reset(self) -> None:
+        with self._lock:
+            self._hits.clear()
+
+
+_GLOBAL_RATE_LIMIT_STORE = RateLimitStore()
+
+
+def get_rate_limit_store() -> RateLimitStore:
+    return _GLOBAL_RATE_LIMIT_STORE
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Enforces rate limits on authentication and file upload endpoints."""
+
+    def __init__(self, app: Any, store: RateLimitStore | None = None) -> None:
+        super().__init__(app)
+        self.store = store or get_rate_limit_store()
+
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
+        path = request.url.path
+
+        # Determine rate limit bucket
+        max_requests = 120
+        window_sec = 60
+        bucket_prefix = "gen"
+
+        if path.startswith("/v1/auth") or path in ("/v1/me", "/v1/session"):
+            max_requests = 30
+            bucket_prefix = "auth"
+        elif "/documents" in path or "/bank-statements" in path:
+            max_requests = 60
+            bucket_prefix = "upload"
+        else:
+            # General endpoints not aggressively throttled
+            return await call_next(request)
+
+        # Allow bypass for automated test suites unless testing rate limiting explicitly
+        if request.headers.get("X-Test-Bypass-Rate-Limit") == "true":
+            return await call_next(request)
+
+        # Extract client identifier (X-Forwarded-For or client host)
+        forwarded = request.headers.get("X-Forwarded-For")
+        ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
+        key = f"{bucket_prefix}:{ip}"
+
+        allowed, remaining, retry_after = self.store.is_allowed(key, max_requests, window_sec)
+        if not allowed:
+            return JSONResponse(
+                status_code=429,
+                media_type="application/problem+json",
+                headers={
+                    "Retry-After": str(retry_after),
+                    "X-RateLimit-Limit": str(max_requests),
+                    "X-RateLimit-Remaining": "0",
+                },
+                content={
+                    "type": "https://avenel.ma/errors/rate-limit-exceeded",
+                    "title": "Trop de requêtes",
+                    "status": 429,
+                    "detail": f"Limite de requêtes atteinte pour cette ressource. Veuillez réessayer dans {retry_after} secondes.",
+                },
+            )
+
+        response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(max_requests)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        return response
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Enforces strict security headers: CSP, HSTS, X-Content-Type-Options, etc."""
+
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; font-src 'self'; connect-src 'self' http://localhost:8000; "
+            "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"
+        )
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
+            "magnetometer=(), microphone=(), payment=(), usb=()"
+        )
+        return response

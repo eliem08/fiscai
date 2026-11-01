@@ -51,6 +51,9 @@ const SettingsPage = lazy(() =>
 const AuditLogPage = lazy(() =>
   import('@/pages/AuditLogPage').then((m) => ({ default: m.AuditLogPage })),
 );
+const PilotDemoPage = lazy(() =>
+  import('@/pages/PilotDemoPage').then((m) => ({ default: m.PilotDemoPage })),
+);
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 );
@@ -74,6 +77,7 @@ export function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/viewer" element={<DocumentReviewPage />} />
+            <Route path="/pilot" element={<PilotDemoPage />} />
             <Route
               path="/app"
               element={

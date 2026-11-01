@@ -227,6 +227,7 @@ export function ProposalReview({
               disabled={activeIndex <= 0}
               className="p-1 text-ink-2 hover:text-ink disabled:opacity-30"
               title="Écriture précédente (K)"
+              aria-label="Écriture précédente (K)"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -240,6 +241,7 @@ export function ProposalReview({
               disabled={activeIndex >= proposals.length - 1}
               className="p-1 text-ink-2 hover:text-ink disabled:opacity-30"
               title="Écriture suivante (J)"
+              aria-label="Écriture suivante (J)"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -250,6 +252,7 @@ export function ProposalReview({
             onClick={() => setShowShortcuts((prev) => !prev)}
             className="p-1.5 text-ink-2 hover:text-ink rounded border border-line bg-paper"
             title="Raccourcis clavier (?)"
+            aria-label="Raccourcis clavier"
           >
             <HelpCircle className="w-4 h-4" />
           </button>
@@ -292,6 +295,7 @@ export function ProposalReview({
                 disabled={currentPage <= 1}
                 className="p-1 hover:text-ink disabled:opacity-30"
                 title="Page précédente"
+                aria-label="Page précédente"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
@@ -302,6 +306,7 @@ export function ProposalReview({
                 disabled={currentPage >= documentPageCount}
                 className="p-1 hover:text-ink disabled:opacity-30"
                 title="Page suivante"
+                aria-label="Page suivante"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
@@ -312,6 +317,7 @@ export function ProposalReview({
                 onClick={() => setZoomLevel((z) => Math.max(50, z - 25))}
                 className="p-1 hover:text-ink"
                 title="Zoom arrière"
+                aria-label="Zoom arrière"
               >
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
@@ -321,6 +327,7 @@ export function ProposalReview({
                 onClick={() => setZoomLevel((z) => Math.min(200, z + 25))}
                 className="p-1 hover:text-ink"
                 title="Zoom avant"
+                aria-label="Zoom avant"
               >
                 <ZoomIn className="w-3.5 h-3.5" />
               </button>
@@ -387,7 +394,7 @@ export function ProposalReview({
                 {activeProposal.rule_refs.map((ref) => (
                   <span
                     key={ref}
-                    className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-sky-wash text-sky-ink border border-sky/30 font-mono"
+                    className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-sky-wash text-[#02435c] border border-sky/30 font-mono font-medium"
                   >
                     <Tag className="w-2.5 h-2.5 mr-1" />
                     {ref}
@@ -402,12 +409,12 @@ export function ProposalReview({
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-surface sticky top-0 border-b border-line z-10 text-ink-2 font-medium">
                 <tr>
-                  <th className="py-2 px-3 w-12 text-center">N°</th>
-                  <th className="py-2 px-3 w-24">Compte</th>
-                  <th className="py-2 px-3">Libellé</th>
-                  <th className="py-2 px-3 w-28 text-right">Débit (MAD)</th>
-                  <th className="py-2 px-3 w-28 text-right">Crédit (MAD)</th>
-                  <th className="py-2 px-3 w-16 text-center">Preuve</th>
+                  <th scope="col" className="py-2 px-3 w-12 text-center">N°</th>
+                  <th scope="col" className="py-2 px-3 w-24">Compte</th>
+                  <th scope="col" className="py-2 px-3">Libellé</th>
+                  <th scope="col" className="py-2 px-3 w-28 text-right">Débit (MAD)</th>
+                  <th scope="col" className="py-2 px-3 w-28 text-right">Crédit (MAD)</th>
+                  <th scope="col" className="py-2 px-3 w-16 text-center">Preuve</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">

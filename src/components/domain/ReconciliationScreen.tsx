@@ -268,7 +268,7 @@ export const ReconciliationScreen: React.FC<ReconciliationScreenProps> = ({
                         {tx.description}
                       </p>
                       {tx.external_reference && (
-                        <p className="text-xs text-slate-400 font-mono mt-0.5">
+                        <p className="text-xs text-slate-600 font-mono mt-0.5">
                           Réf: {tx.external_reference}
                         </p>
                       )}
@@ -277,7 +277,7 @@ export const ReconciliationScreen: React.FC<ReconciliationScreenProps> = ({
                     <div className="text-right">
                       <span
                         className={`text-sm font-mono font-semibold ${
-                          tx.amount > 0 ? 'text-emerald-600' : 'text-slate-800'
+                          tx.amount > 0 ? 'text-emerald-800' : 'text-slate-800'
                         }`}
                       >
                         {tx.amount > 0 ? '+' : ''}
@@ -372,7 +372,7 @@ export const ReconciliationScreen: React.FC<ReconciliationScreenProps> = ({
                                 handleAccept(m.id);
                               }}
                               disabled={isProcessing}
-                              className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors flex items-center space-x-1 shadow-sm disabled:opacity-50"
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-md transition-colors flex items-center space-x-1 shadow-sm disabled:opacity-50"
                               data-testid={`btn-accept-${m.id}`}
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />

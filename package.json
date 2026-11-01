@@ -29,6 +29,7 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.48.2",
     "@stoplight/spectral-cli": "^6.14.0",
     "@testing-library/jest-dom": "^6.6.3",

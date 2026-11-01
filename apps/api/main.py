@@ -10,7 +10,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from apps.api.middleware import IdempotencyMiddleware
+from apps.api.middleware import (
+    IdempotencyMiddleware,
+    RateLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
 from apps.api.routes import (
     approvals,
     bank,
@@ -47,6 +51,12 @@ app = FastAPI(
     openapi_url="/openapi.json",
     lifespan=lifespan,
 )
+
+# Security headers on every response
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Rate limiting on authentication and upload endpoints
+app.add_middleware(RateLimitMiddleware)
 
 # Idempotency middleware enforces required Idempotency-Key on all mutating requests
 app.add_middleware(IdempotencyMiddleware)
@@ -132,6 +142,47 @@ async def health_check() -> dict[str, Any]:
         "service": "avenel-api",
         "intake_paused": intake.intake_paused,
         "banner_message": intake.banner_message,
+    }
+
+
+@app.get("/health/ready", tags=["System"])
+async def readiness_check() -> dict[str, Any]:
+    """Readiness probe checking database connectivity, KMS encryption key, and antivirus scanner."""
+    from apps.api.deps import get_db
+    from avenel.bank.rib import get_rib_encryption_raw_key
+
+    # 1. KMS key check
+    try:
+        get_rib_encryption_raw_key()
+        kms_status = "ok"
+    except (KeyError, RuntimeError, ValueError) as ex:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Service Unavailable: KMS key uninitialized ({ex})",
+        ) from ex
+
+    # 2. Antivirus check
+    intake = check_intake_health()
+    clamav_status = "quarantined_fallback" if intake.intake_paused else "ok"
+
+    # 3. Database check
+    db_status = "ok"
+    try:
+        with next(get_db()) as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1;")
+    except (RuntimeError, OSError) as ex:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Service Unavailable: Database connection failed ({ex})",
+        ) from ex
+
+    return {
+        "status": "ready",
+        "service": "avenel-api",
+        "database": db_status,
+        "kms": kms_status,
+        "clamav": clamav_status,
+        "intake_paused": intake.intake_paused,
     }
 
 

@@ -138,10 +138,10 @@ export function ExportScreen({
 
         {/* Target Profile Selection */}
         <div className="mt-6 space-y-4">
-          <label className="block text-sm font-semibold text-slate-900">
+          <div id="format-label" className="block text-sm font-semibold text-slate-900">
             Format du progiciel comptable
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" role="radiogroup" aria-labelledby="format-label">
             <button
               type="button"
               onClick={() => setSelectedTarget('sage100_csv')}
@@ -231,7 +231,7 @@ export function ExportScreen({
             <div>
               <h2 className="text-lg font-bold text-slate-900">Livrables prêts au téléchargement</h2>
               <p className="text-xs text-slate-500">
-                Fichier d'import comptable certifié et dossier probant horodaté.
+                Fichier d'import comptable validé et dossier probant horodaté.
               </p>
             </div>
             {isHashMatching ? (
