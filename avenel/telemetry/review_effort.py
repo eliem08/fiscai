@@ -220,3 +220,4 @@ def get_internal_metrics_summary(
         },
         "files": list(files_map.values()),
     }
+

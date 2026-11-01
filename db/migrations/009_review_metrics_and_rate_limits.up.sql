@@ -31,3 +31,4 @@ CREATE TABLE IF NOT EXISTS rate_limit_buckets (
 );
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON review_effort_metrics, rate_limit_buckets TO avenel_app;
+

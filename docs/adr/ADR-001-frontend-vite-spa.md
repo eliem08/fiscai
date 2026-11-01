@@ -46,3 +46,4 @@ Vite provides sub-second hot module replacement (HMR), tree-shaking, and lightwe
 
 - **Positive:** Simpler Docker containerization, faster CI build times, zero Node.js backend runtime maintenance, strict decoupled API contracts.
 - **Negative:** Search engine optimization (SEO) is not natively server-rendered; however, AVENEL is an authenticated B2B SaaS portal and internal console for accounting firms, where public indexing is not required.
+

@@ -59,3 +59,4 @@ jobs:
           AVENEL_KMS_KEY: "avenel-test-kms-key-fixture-32chars-min-ok"
         run: |
           python scripts/test_backup_restore.py
+

@@ -49,3 +49,4 @@ This renders:
   1. Deploy new vApp from Ubuntu template.
   2. Under *Guest OS Customization*, enable cloud-init and attach `user-data.yaml`.
   3. Power on VM.
+
