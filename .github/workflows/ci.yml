@@ -144,3 +144,15 @@ jobs:
       - name: Run Playwright E2E & Accessibility Suite
         run: |
           npx playwright test e2e/accessibility.spec.ts e2e/pilot-journey.spec.ts
+
+      - name: Validate Terraform Configuration
+        run: |
+          terraform -chdir=infra/terraform init -backend=false
+          terraform -chdir=infra/terraform validate
+
+      - name: Run Backup & Restore Verification Drill
+        run: |
+          python scripts/test_backup_restore.py
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/avenel
+          AVENEL_KMS_KEY: "avenel-test-kms-key-fixture-32chars-min-ok"

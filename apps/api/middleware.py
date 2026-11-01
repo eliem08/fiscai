@@ -10,14 +10,18 @@ Enforces:
 from __future__ import annotations
 
 import hashlib
+import os
 import threading
 import time
 from dataclasses import dataclass
 from typing import Any
 
+import psycopg
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+
+from avenel.infrastructure.rate_limiter import PostgresRateLimiter
 
 
 @dataclass
@@ -183,14 +187,27 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitStore:
-    """Thread-safe sliding-window rate limit store."""
+    """Shared rate limit store backed by PostgreSQL table `rate_limit_buckets` with in-memory fallback."""
 
-    def __init__(self) -> None:
+    def __init__(self, db_url: str | None = None) -> None:
         self._lock = threading.Lock()
         self._hits: dict[str, list[float]] = {}
+        self._db_url = db_url or os.environ.get("DATABASE_URL")
+        self._pg_limiter = PostgresRateLimiter(self._db_url)
 
     def is_allowed(self, key: str, max_requests: int, window_seconds: int = 60) -> tuple[bool, int, int]:
-        """Checks if request is within limit. Returns (allowed, remaining, retry_after)."""
+        """Checks if request is within limit across all workers using PostgreSQL shared store."""
+        if self._db_url:
+            try:
+                with psycopg.connect(self._db_url, autocommit=True) as conn:
+                    allowed = self._pg_limiter.acquire(conn, key, rate_per_minute=max_requests)
+                    if not allowed:
+                        return False, 0, window_seconds
+                    return True, max_requests - 1, 0
+            except (psycopg.Error, OSError):
+                # Fallback to local in-memory on DB connection failure
+                pass
+
         now = time.time()
         window_start = now - window_seconds
         with self._lock:
@@ -211,6 +228,12 @@ class RateLimitStore:
     def reset(self) -> None:
         with self._lock:
             self._hits.clear()
+        if self._db_url:
+            try:
+                with psycopg.connect(self._db_url, autocommit=True) as conn, conn.cursor() as cur:
+                    cur.execute("TRUNCATE rate_limit_buckets;")
+            except (psycopg.Error, OSError):
+                pass
 
 
 _GLOBAL_RATE_LIMIT_STORE = RateLimitStore()

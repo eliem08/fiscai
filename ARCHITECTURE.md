@@ -1,6 +1,6 @@
 # AVENEL — Architecture and Build Instructions
 
-Version 2.0 · 30 October 2026 · Supersedes `architecture.md` v1.0 and `implementation_spec.md` v1.0
+Version 2.1 · 1 November 2026 · Supersedes Version 2.0 (30 October 2026)
 
 This file is the single source of truth for building AVENEL. It is written for an AI coding agent and the humans reviewing its work. Read Part A completely before writing any code.
 
@@ -99,7 +99,7 @@ One modular monolith plus one worker process type. One PostgreSQL database. One 
 
 | Concern | Choice | Reason |
 |---|---|---|
-| Web | Next.js 15 App Router, TypeScript strict, Tailwind with the tokens in Part E only | One app for console and portal |
+| Web | Vite + React 18 SPA (ADR-001), TypeScript strict, Tailwind with Part E tokens only | Decoupled REST API, static delivery via Nginx, zero Node.js SSR runtime attack surface |
 | API | FastAPI, Pydantic v2, SQLAlchemy 2 Core (no ORM magic in domain code) | Typed contracts, explicit SQL |
 | Database | PostgreSQL 16 with `pgcrypto`, `citext`, `btree_gist` | RLS, exclusion constraints, `NULLS NOT DISTINCT` |
 | Jobs and workflow | Procrastinate (Postgres-backed) plus the explicit state machine in Part D | Transactional enqueue, one datastore, no extra service |
@@ -1325,3 +1325,27 @@ A pilot firm can, without help from AVENEL staff:
 9. see the charge for the completed file.
 
 And the operators can show: zero cross-tenant access in tests, a verified audit chain, a successful restore test, and measured time saved against the firm's baseline for the same month.
+
+---
+
+# Part K — Architecture Conformance & Pilot Verification Matrix
+
+Version 2.1 conformance baseline for the Moroccan pilot deployment:
+
+| Item | Architectural Specification | Implementation Anchor | Verification Gate |
+|---|---|---|---|
+| **K.1** | Scope-first authorization returning 404 for out-of-scope resources, 403 for role denials; forced PostgreSQL RLS on all tenant tables | `apps/api/deps.py`, `002_rls.up.sql` | `make rls-check`, `test_role_matrix.py` |
+| **K.2** | Zero domain rule invention: rules read from `/jurisdiction/ma/*.yaml`; unverified rules marked `status: needs_expert` | `/jurisdiction/ma/*.yaml` | `check_expert_sign_off.py` |
+| **K.3** | Zero numeric tax or legal literals in application code outside `/jurisdiction/` | `scripts/check_no_tax_literals.py` | `make lint` |
+| **K.4** | Human review loop: AI proposes extractions/entries, code validates invariants, humans confirm and approve | `avenel/extraction/`, `apps/api/routes/proposals.py` | Playwright E2E journey |
+| **K.5** | Append-only audit trail: SHA-256 genesis hash chain, immutable audit events, exports, and approvals | `avenel/evidence/`, `003_append_only.up.sql` | `make audit-verify` |
+| **K.6** | Strict double-entry balancing: CGNC chart of accounts, multi-rate TVA splits, explicit rounding gain/loss lines | `avenel/accounting/`, `005_rounding_directions.up.sql` | `test_journal_proposals.py` |
+| **K.7** | Bank statement ingestion, active BQ proposal uniqueness, and match state synchronization | `avenel/reconciliation/`, `006_reconciliation_refinements.up.sql`, `007_active_bq_proposal_unique.up.sql` | `test_reconciliation_refinements.py` |
+| **K.8** | File-level accountant sign-off with MFA, decider professional title check, and deterministic subject hash | `avenel/approvals/`, `008_round_trips_and_approval_policy.up.sql` | `test_approvals.py` |
+| **K.9** | Dual-format exports (Sage 100 French CSV, Odoo 17) and tamper-evident ZIP evidence pack | `avenel/exports/` | `test_golden_exports.py` |
+| **K.10** | Review effort telemetry: active review time, fields corrected, entries edited, issues resolved, provider costs | `avenel/telemetry/`, `009_review_metrics_and_rate_limits.up.sql` | `test_review_effort_metrics.py`, Playwright |
+| **K.11** | Frontend Web Architecture: Vite + React 18 SPA (ADR-001), unprivileged Nginx, Part E design tokens | `src/`, `docker/Dockerfile.web`, `docker/nginx.conf` | `npm test`, `npm run typecheck` |
+| **K.12** | Shared-store rate limiting across workers, security headers (CSP, HSTS) delivered via HTTP headers | `avenel/infrastructure/rate_limiter.py`, `apps/api/middleware.py` | `test_shared_rate_limiter.py` |
+| **K.13** | Sovereign Moroccan hosting: cloud-init provider-neutral VM bootstrap and EU fallback | `infra/terraform/main.tf`, `docker-compose.prod.yml` | `terraform validate` |
+| **K.14** | Automated backups, WAL archiving, Point-In-Time Recovery (PITR), and scripted isolated restore test | `scripts/test_backup_restore.py`, `docs/runbooks/restore.md` | Weekly CI restore drill |
+

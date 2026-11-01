@@ -9,6 +9,7 @@ test.describe('Phase 5b — axe Accessibility Audits (Zero Serious/Critical Viol
     { name: 'Approval', query: 'approval' },
     { name: 'Export', query: 'export' },
     { name: 'Portal', query: 'portal' },
+    { name: 'Internal Metrics', query: 'metrics' },
   ];
 
   for (const { name, query } of screens) {
@@ -36,3 +37,4 @@ test.describe('Phase 5b — axe Accessibility Audits (Zero Serious/Critical Viol
     });
   }
 });
+

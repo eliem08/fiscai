@@ -110,3 +110,4 @@ Le rapport généré produit le taux de conformité exact par champ contre les s
 - Date et Numéro $\ge 97.0\%$
 - Montants HT / TVA / TTC $\ge 99.0\%$
 - Erreurs silencieuses sur montants : **Rigoureusement 0.0%**.
+

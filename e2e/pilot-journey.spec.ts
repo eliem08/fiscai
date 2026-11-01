@@ -72,5 +72,21 @@ test.describe('Phase 5b — Pilot End-to-End Monthly File Journey', () => {
     await page.getByTestId('btn-generate-sage-csv').click();
     await expect(page.getByTestId('export-success-banner')).toBeVisible();
     await expect(page.getByTestId('btn-download-evidence-pack')).toBeEnabled();
+
+    // 11. Step 11: Verify Internal Operational Metrics (Review Effort & Cost)
+    await page.goto('/pilot?screen=metrics&role=owner');
+    await expect(page.getByText('Indicateurs internes — Effort de révision & coûts')).toBeVisible();
+    await expect(page.getByTestId('metric-review-time')).toHaveText('3 min 05 s');
+    await expect(page.getByTestId('metric-corrections')).toHaveText('1 champ(s)');
+    await expect(page.getByTestId('metric-issues-resolved')).toHaveText('1');
+    await expect(page.getByTestId('metric-cost-per-file')).toHaveText('0.0420 MAD');
+    await expect(page.getByText('Société Atlas Négoce SARL')).toBeVisible();
+
+    // Capture screenshot of internal metrics screen with real populated numbers
+    await page.screenshot({ path: 'docs/screenshots/internal-metrics.png', fullPage: true });
+
+    // Verify RBAC: staff cannot access internal metrics (access denied)
+    await page.goto('/pilot?screen=metrics&role=staff');
+    await expect(page.getByText('Accès restreint')).toBeVisible();
   });
 });

@@ -26,6 +26,8 @@ FROZEN_MIGRATION_HASHES: dict[str, str] = {
     "006_reconciliation_refinements.down.sql": "7bccf7a24803260a16a72eb96083496ba0c0c4df0c2a0263123b4520a291c6da",
     "007_active_bq_proposal_unique.up.sql": "17db608d84fbe01dcd32c3f6a3adaec69b2abd268ddc1a7732eecfccfbf400b0",
     "007_active_bq_proposal_unique.down.sql": "ba1a185fcafeb9f1b95f4b5ff3689aae60ade028bcb19eb2ed7f85af0c084c13",
+    "008_round_trips_and_approval_policy.up.sql": "6ffb4271e2d88bd08b3c156f047afcc3e00d0f159dffd3558063bef2327f3ace",
+    "008_round_trips_and_approval_policy.down.sql": "110e1014b1694136ed04e872431a69bb67910beba953a27166e703bf8a0e290e",
 }
 
 
@@ -65,7 +67,7 @@ def check_frozen_migrations() -> int:
             print(f"- {err}", file=sys.stderr)
         return 1
 
-    print(f"SUCCESS: All {len(FROZEN_MIGRATION_HASHES)} frozen migrations (001–007) verified intact.")
+    print(f"SUCCESS: All {len(FROZEN_MIGRATION_HASHES)} frozen migrations (001–008) verified intact.")
     return 0
 
 

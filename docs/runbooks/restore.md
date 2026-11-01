@@ -70,3 +70,4 @@ Le rétablissement en production exige le passage avec succès de 4 jalons :
    *Vérifie que la séquence cryptographique SHA-256 de chaque tenant est linéaire et exempte de rupture.*
 4. **Contrôle de déchiffrement des RIB :**
    *Vérification avec la clé KMS d'environnement (`AVENEL_KMS_KEY`) que les données bancaires chiffrées sont récupérables.*
+

@@ -15,6 +15,10 @@ foreach ($Target in $Targets) {
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & $Python scripts/check_migration_hashes.py
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $Python scripts/check_test_count.py
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $Python scripts/generate_expert_sign_off.py --check
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         }
         "typecheck" {
             Write-Host "[make] Running typecheck..." -ForegroundColor Cyan

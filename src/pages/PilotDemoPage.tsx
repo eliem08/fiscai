@@ -6,6 +6,7 @@ import { ReconciliationScreen, BankTransactionLine, ProposalSummary, Reconciliat
 import { ApprovalScreen, ApprovalWorkRequest, CurrentReviewer, ReviewIssueItem } from '@/components/domain/ApprovalScreen';
 import { ExportScreen, ExportProfileSummary, ExportTarget } from '@/components/domain/ExportScreen';
 import { PortalRequests, PortalRequestItem } from '@/components/domain/PortalRequests';
+import { InternalMetricsScreen } from '@/components/domain/InternalMetricsScreen';
 import { CheckCircle2, ArrowRight, ShieldCheck, FileSpreadsheet, Lock } from 'lucide-react';
 
 // Sample data for Queue Screen
@@ -332,6 +333,11 @@ export function PilotDemoPage() {
 
   if (screen === 'portal') {
     return <PortalRequests requests={mockPortalRequests} onAnswerRequest={async () => {}} />;
+  }
+
+  if (screen === 'metrics') {
+    const roleParam = (searchParams.get('role') as any) || 'owner';
+    return <InternalMetricsScreen currentUserRole={roleParam} />;
   }
 
   // Monthly Journey End-to-End Orchestrator

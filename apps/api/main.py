@@ -24,6 +24,7 @@ from apps.api.routes import (
     documents,
     exports,
     issues,
+    metrics,
     periods,
     proposals,
     reconciliation,
@@ -201,3 +202,4 @@ app.include_router(reconciliation.router)
 app.include_router(approvals.router)
 app.include_router(exports.router)
 app.include_router(issues.router)
+app.include_router(metrics.router)

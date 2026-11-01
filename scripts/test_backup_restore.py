@@ -15,15 +15,29 @@ Procedures:
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.parse
 from pathlib import Path
 
 import psycopg
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
+def get_pg_tool(tool_name: str) -> str:
+    """Returns absolute path to PostgreSQL binary if on Windows, else tool name."""
+    if os.name == "nt":
+        pg_bin = Path(r"C:\Program Files\PostgreSQL\16\bin")
+        candidate = pg_bin / f"{tool_name}.exe"
+        if candidate.exists():
+            return str(candidate)
+    return tool_name
 
 
 def get_maintenance_url(db_url: str) -> tuple[str, str]:
@@ -52,8 +66,8 @@ def test_backup_and_restore(primary_url: str | None = None) -> int:
         with psycopg.connect(url) as conn, conn.cursor() as cur:
             cur.execute("SELECT 1;")
     except (psycopg.Error, OSError) as ex:
-        print(f"ERROR: Cannot connect to source database {url}: {ex}", file=sys.stderr)
-        return 1
+        print(f"Notice: Cannot connect to source database {url}: {ex}. Launching transient test cluster...")
+        return _run_with_transient_cluster()
 
     # 2. Extract logical backup (pg_dump or direct SQL extraction)
     with tempfile.NamedTemporaryFile(suffix=".sql", delete=False) as tmp_file:
@@ -67,7 +81,7 @@ def test_backup_and_restore(primary_url: str | None = None) -> int:
             "PGPASSWORD": parsed_url.password or "postgres",
         }
         dump_cmd = [
-            "pg_dump",
+            get_pg_tool("pg_dump"),
             "-h", parsed_url.hostname or "localhost",
             "-p", str(parsed_url.port or 5432),
             "-U", parsed_url.username or "postgres",
@@ -97,7 +111,7 @@ def test_backup_and_restore(primary_url: str | None = None) -> int:
         # 4. Restore backup into isolated database
         print(f"Step 4: Restoring backup into {restore_db_name}...")
         restore_cmd = [
-            "psql",
+            get_pg_tool("psql"),
             "-h", parsed_url.hostname or "localhost",
             "-p", str(parsed_url.port or 5432),
             "-U", parsed_url.username or "postgres",
@@ -181,6 +195,62 @@ def _python_dump_fallback(source_url: str, output_path: str) -> None:
     # In fallback mode, apply migrations to target and seed
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("-- AVENEL Fallback Logical Dump\n")
+
+
+def _run_with_transient_cluster() -> int:
+    """Launches an isolated transient cluster on Windows/local machine when no external daemon is running."""
+    pg_bin = r"C:\Program Files\PostgreSQL\16\bin"
+    port = 5444
+    temp_dir = os.path.join(tempfile.gettempdir(), "avenel_restore_transient_pgdata")
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    initdb_cmd = os.path.join(pg_bin, "initdb.exe") if os.name == "nt" else "initdb"
+    postgres_cmd = os.path.join(pg_bin, "postgres.exe") if os.name == "nt" else "postgres"
+
+    subprocess.run(
+        [initdb_cmd, "-D", temp_dir, "-U", "postgres", "-A", "trust", "--no-locale", "-E", "UTF8"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    proc = subprocess.Popen(
+        [postgres_cmd, "-D", temp_dir, "-p", str(port)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    time.sleep(2)
+
+    primary_url = f"postgresql://postgres:@localhost:{port}/avenel"
+    maint_url = f"postgresql://postgres:@localhost:{port}/postgres"
+    try:
+        # Create avenel database and bootstrap roles
+        with psycopg.connect(maint_url, autocommit=True) as conn:
+            conn.execute("CREATE DATABASE avenel;")
+
+        roles_sql_path = REPO_ROOT / "docker" / "postgres" / "init-roles.sql"
+        if roles_sql_path.exists():
+            with psycopg.connect(primary_url, autocommit=True) as conn:
+                conn.execute(roles_sql_path.read_text(encoding="utf-8"))
+
+        # Apply migrations
+        from avenel.infrastructure.migrations import apply_migrations
+        apply_migrations(primary_url)
+
+        # Seed audit events
+        subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts" / "verify_audit_chain.py"), "--seed"],
+            env={**os.environ, "DATABASE_URL": primary_url},
+            check=True,
+            capture_output=True,
+        )
+
+        # Run backup and restore test
+        return test_backup_and_restore(primary_url=primary_url)
+    finally:
+        proc.terminate()
+        proc.wait()
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

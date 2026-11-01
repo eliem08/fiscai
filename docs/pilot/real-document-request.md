@@ -53,3 +53,4 @@ Fournir des relevés sous format PDF numérique natif ou scanné propre pour les
 1. Accéder au portail fiduciaire sécurisé : `https://pilot.avenel.ma` (ou instance locale du cabinet).
 2. Se connecter avec le compte `manager` ou `owner` habilité (authentification multifacteur activée).
 3. Déposer les pièces par lot dans le dossier d'évaluation du client pilote.
+

@@ -1,0 +1,61 @@
+name: Weekly Disaster Recovery & Backup Restore Drill
+
+on:
+  schedule:
+    # Run every Sunday at 03:00 UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+jobs:
+  backup-restore-drill:
+    name: Backup & Point-in-Time Restore Drill
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: avenel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Initialize PostgreSQL Roles
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/avenel
+        run: |
+          psql "$DATABASE_URL" -f docker/postgres/init-roles.sql
+
+      - name: Apply Migrations to Source Database
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/avenel
+        run: |
+          python avenel/infrastructure/migrations.py up
+
+      - name: Execute Scripted Backup & Restore Verification Drill
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/avenel
+          AVENEL_KMS_KEY: "avenel-test-kms-key-fixture-32chars-min-ok"
+        run: |
+          python scripts/test_backup_restore.py

@@ -300,7 +300,7 @@ export const en: Record<keyof typeof fr, string> = {
   'review.selectPrompt': 'Select a dossier awaiting review to examine the AI findings.',
   'review.findingsCount': '{count} AI finding(s)',
   'review.decisionRequired': 'Decision *',
-  'review.validated': 'Dossier validated — compliant for transmission',
+  'review.validated': 'Dossier validated — ready for transmission',
   'review.correction': 'Correction required — return to client',
   'review.rejected': 'Rejected — dossier not usable',
   'review.commentLabel': 'Expert comment * (logged)',
@@ -414,8 +414,8 @@ export const en: Record<keyof typeof fr, string> = {
   'pagination.next': 'Next page',
 
   // --- Checklist statuses ---
-  'check.passed': 'Compliant',
-  'check.failed': 'Non-compliant',
+  'check.passed': 'Passed',
+  'check.failed': 'Failed',
   'check.needs_review': 'Review required',
   'check.missing': 'Missing',
 

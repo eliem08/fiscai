@@ -17,6 +17,10 @@ if "%TARGET%"=="lint" (
     if errorlevel 1 exit /b 1
     %PYTHON% scripts\check_migration_hashes.py
     if errorlevel 1 exit /b 1
+    %PYTHON% scripts\check_test_count.py
+    if errorlevel 1 exit /b 1
+    %PYTHON% scripts\generate_expert_sign_off.py --check
+    if errorlevel 1 exit /b 1
 ) else if "%TARGET%"=="typecheck" (
     echo [make] Running typecheck...
     %PYTHON% -m mypy avenel apps/api scripts

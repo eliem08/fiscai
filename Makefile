@@ -7,6 +7,7 @@ lint:
 	$(PYTHON) scripts/check_no_tax_literals.py
 	$(PYTHON) scripts/check_migration_hashes.py
 	$(PYTHON) scripts/check_test_count.py
+	$(PYTHON) scripts/generate_expert_sign_off.py --check
 
 test:
 	$(PYTHON) -m pytest -v tests
