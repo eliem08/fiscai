@@ -32,6 +32,8 @@ def get_collected_count() -> int:
     cmd = [sys.executable, "-m", "pytest", "--collect-only", "-q"]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     output = proc.stdout + proc.stderr
+    if proc.returncode != 0:
+        print(f"[COLLECTION WARNING] pytest --collect-only returned code {proc.returncode}:\n{output}", file=sys.stderr)
 
     count = 0
     for line in output.splitlines():

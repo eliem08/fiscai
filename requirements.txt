@@ -23,4 +23,5 @@ pillow>=10.2.0
 pymupdf>=1.23.0
 types-Pillow>=10.2.0
 hypothesis>=6.98.0
+reportlab>=4.0.0
 
