@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -22,8 +23,18 @@ from apps.api.routes import (
     session,
     work_requests,
 )
+from avenel.bank.rib import get_rib_encryption_raw_key
 from avenel.documents.scanner import check_intake_health
 from avenel.tenancy.jwt import MfaRequiredError
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Verifies critical security preconditions at startup."""
+    # Refuse startup if RIB encryption key is missing
+    get_rib_encryption_raw_key()
+    yield
+
 
 app = FastAPI(
     title="AVENEL API",
@@ -31,6 +42,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 # Idempotency middleware enforces required Idempotency-Key on all mutating requests

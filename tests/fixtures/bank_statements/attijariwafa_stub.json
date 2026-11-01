@@ -1,0 +1,26 @@
+{
+  "bank_name": "Attijariwafa bank",
+  "bank_code": "007",
+  "status": "awaiting_real_samples",
+  "layout": {
+    "header_identifiers": ["ATTIJARIWAFA BANK", "EXTRAIT DE COMPTE"],
+    "rib_pattern": "RIB\\s*:\\s*([0-9]{24})",
+    "opening_balance_labels": ["ANCIEN SOLDE", "SOLDE AU"],
+    "closing_balance_labels": ["NOUVEAU SOLDE", "SOLDE EN FIN DE PERIODE"],
+    "table_columns": ["date", "date_valeur", "operation", "debit", "credit"],
+    "number_format": {
+      "thousands_separator": " ",
+      "decimal_separator": ","
+    }
+  },
+  "sample_stub_lines": [
+    "ATTIJARIWAFA BANK - EXTRAIT DE COMPTE N° 12",
+    "RIB : 007780000123456789012345",
+    "Période du 01/03/2026 au 31/03/2026",
+    "ANCIEN SOLDE AU 01/03/2026 : 150 000,00 MAD",
+    "05/03/2026 05/03/2026 VIR EMIS FOURNISSEUR STE CASABLANCAISE 12 500,00",
+    "12/03/2026 12/03/2026 VIR RECU CLIENT ATLAS DISTRIB 24 000,00",
+    "31/03/2026 31/03/2026 COMMISSIONS ET FRAIS TENUE DE COMPTE 110,00",
+    "NOUVEAU SOLDE AU 31/03/2026 : 161 390,00 MAD"
+  ]
+}

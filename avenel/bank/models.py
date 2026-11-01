@@ -48,3 +48,4 @@ class ParsedStatement:
     @property
     def has_balance_break(self) -> bool:
         return self.balance_check == "break"
+

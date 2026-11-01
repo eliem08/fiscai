@@ -1832,6 +1832,9 @@ components:
           format: uuid
         amount_mad:
           type: number
+        match_status:
+          type: string
+          enum: [proposed, accepted, rejected, superseded]
         bank_date:
           type: [string, "null"]
         bank_desc:

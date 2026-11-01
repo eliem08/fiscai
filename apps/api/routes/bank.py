@@ -28,6 +28,15 @@ class CreateBankAccountInput(BaseModel):
     journal_code: str = Field(default="BQ")
 
 
+class BankAccountResponse(BaseModel):
+    id: uuid.UUID
+    bank_code: str
+    rib_last4: str
+    rib_masked: str
+    currency: str
+    journal_code: str
+
+
 def _check_client_scope(session: UserSession, client_id: uuid.UUID) -> None:
     if session.role == "client_user" and client_id not in session.client_scope_ids:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client introuvable.")

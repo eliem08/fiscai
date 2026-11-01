@@ -166,3 +166,87 @@ def test_hypothesis_every_proposal_balances_and_has_evidence(
         else:
             assert line.fx_rate_date is not None, f"Foreign currency {line.currency} requires fx_rate_date"
             assert line.fx_source is not None, f"Foreign currency {line.currency} requires fx_source"
+
+
+bank_pattern_strategy = st.sampled_from(["supplier_payment", "customer_receipt", "bank_fee", "unmatched"])
+bank_amount_strategy = st.one_of(boundary_amounts, float_amounts)
+vat_withholding_fractions = st.sampled_from([0.0, 0.75, 1.0, 0.05])
+
+
+@settings(max_examples=1000, deadline=None)
+@given(
+    amount=bank_amount_strategy,
+    pattern=bank_pattern_strategy,
+    withholding_frac=vat_withholding_fractions,
+    fee_has_vat=st.booleans(),
+)
+def test_hypothesis_every_bank_proposal_balances_and_has_evidence(
+    amount: float,
+    pattern: str,
+    withholding_frac: float,
+    fee_has_vat: bool,
+):
+    """Property test verifying that BQ proposals across all patterns balance and have valid evidence."""
+    from avenel.proposals.bank_proposals import BankLineProposalInput, build_bank_journal_proposal
+
+    tenant_id = uuid.uuid4()
+    client_id = uuid.uuid4()
+    tx_id = uuid.uuid4()
+    bank_acc_id = uuid.uuid4()
+
+    # Direction: payments/fees are disbursements (negative amount), receipts are positive
+    if pattern in ("supplier_payment", "bank_fee"):
+        tx_amount = -abs(amount)
+    elif pattern == "customer_receipt":
+        tx_amount = abs(amount)
+    else:
+        tx_amount = -amount if amount > 1000 else amount
+
+    withholding_mad = round(tx_amount * withholding_frac, 2) if (withholding_frac > 0 and pattern == "customer_receipt") else 0.0
+
+    inp = BankLineProposalInput(
+        tenant_id=tenant_id,
+        client_entity_id=client_id,
+        work_request_id=uuid.uuid4(),
+        bank_account_id=uuid.uuid4(),
+        bank_transaction_id=tx_id,
+        bank_statement_id=uuid.uuid4(),
+        line_index=1,
+        booking_date=datetime.date(2026, 3, 25),
+        amount_mad=tx_amount,
+        description=f"TEST TRANSACTION {pattern}",
+        journal_code="BQ",
+        bank_ledger_account_id=bank_acc_id,
+        bank_ledger_account_code="5141",
+        pattern=pattern,
+        counterparty_id=uuid.uuid4(),
+        counterparty_account_id=uuid.uuid4(),
+        counterparty_account_code="4411" if pattern == "supplier_payment" else "3421",
+        withholding_mad=withholding_mad,
+        withholding_account_id=uuid.uuid4() if withholding_mad > 0 else None,
+        withholding_account_code="3456" if withholding_mad > 0 else None,
+        fee_account_id=uuid.uuid4(),
+        fee_account_code="6147",
+        fee_vat_account_id=uuid.uuid4() if fee_has_vat else None,
+        fee_vat_account_code="34552" if fee_has_vat else None,
+        fee_vat_rate=0.10 if fee_has_vat else 0.0,
+        suspense_account_id=uuid.uuid4(),
+        suspense_account_code="4711",
+    )
+
+    res = build_bank_journal_proposal(inp)
+
+    # Invariant 1: Strict MAD balance
+    tot_dr = round(sum(l.debit_mad for l in res.lines), 2)
+    tot_cr = round(sum(l.credit_mad for l in res.lines), 2)
+    assert tot_dr == tot_cr, f"Bank proposal unbalanced: Dr={tot_dr}, Cr={tot_cr}"
+
+    # Invariant 2: Every line has evidence pointing to the statement line
+    for l in res.lines:
+        assert len(l.evidence_refs) > 0, f"Line #{l.line_no} missing evidence"
+        assert l.evidence_refs[0].get("bank_transaction_id") == str(tx_id)
+        assert l.evidence_refs[0].get("line_index") == 1
+
+    # Invariant 3: Source bank transaction id is attached
+    assert res.source_bank_transaction_id == tx_id
+

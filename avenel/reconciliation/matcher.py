@@ -109,7 +109,7 @@ def match_single_pair(
         for frac in withheld_fractions:
             expected_withheld = round(proposal.vat_mad * frac, 2)
             if abs(diff - expected_withheld) <= 0.01:
-                pct_str = f"{int(frac * 100)}%"
+                pct_str = f"{frac:.0%}"
                 score = 0.98 if (delta_days <= 30 or token_overlap) else 0.94
                 return MatchCandidate(
                     score=round(score, 4),
@@ -126,7 +126,33 @@ def match_single_pair(
                     explanation=f"Paiement net correspondant au TTC déduction faite de {pct_str} de retenue à la source TVA.",
                 )
 
-    # 3. Small bank fee deduction (difference between 1 and 100 MAD on wire)
+    # 3. Autre retenue à la source légale (withholding_other : IS 5% services / loyers LF 2026)
+    if diff > 0:
+        for rule_key in ("withholding.is.services_5pct", "withholding.is.rents_5pct"):
+            is_rule = pack.get_rule(rule_key)
+            if is_rule and isinstance(is_rule.get("value"), dict):
+                is_val = float(is_rule["value"].get("rate", 0.0))
+                expected_is_withheld = round(prop_abs * is_val, 2)
+                if abs(diff - expected_is_withheld) <= 0.01:
+                    pct_str = f"{is_val:.0%}"
+                    score = 0.93 if (delta_days <= 30 or token_overlap) else 0.88
+                    return MatchCandidate(
+                        score=round(score, 4),
+                        reasons=[
+                            f"Retenue à la source IS détectée ({pct_str})",
+                            f"Montant TTC facture : {prop_abs:.2f} MAD",
+                            f"Encaissement bancaire : {bank_abs:.2f} MAD",
+                            f"Retenue : {diff:.2f} MAD",
+                            "Écart catégorisé en retenue à la source (révision humaine requise)",
+                        ],
+                        difference_mad=diff,
+                        difference_kind="withholding_other",
+                        bank_items=[bank_tx],
+                        proposal_items=[proposal],
+                        explanation=f"Paiement net correspondant au TTC déduction faite de la retenue à la source IS {pct_str} (LF 2026).",
+                    )
+
+    # 4. Small bank fee deduction (difference between 1 and 100 MAD on wire)
     if 0 < diff <= 100.0 and ("vir" in bank_tx.label.lower() or "commission" in bank_tx.label.lower()):
         return MatchCandidate(
             score=0.90,

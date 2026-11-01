@@ -455,7 +455,7 @@ Date,Libelle,Debit,Credit
     }
     prop_b = _seed_document_and_proposal(db_conn, tenant_id, client_id, wr_id, "invoice_purchase", inv_b)
 
-    # 3. Create candidate Match 1
+    # 3. Create candidate Match 1 (proposed)
     match_1_id = uuid.uuid4()
     with db_conn.cursor() as cur:
         cur.execute(
@@ -480,8 +480,7 @@ Date,Libelle,Debit,Credit
             (uuid.uuid4(), tenant_id, client_id, match_1_id, prop_a),
         )
 
-    # 4. Invariant: Database unique constraint "one_accepted_match_per_bank_line"
-    # prevents linking the same bank transaction to any other match item!
+    # 4. Two proposed candidates for the same bank line COEXIST (fix spec bug D.3)
     match_2_id = uuid.uuid4()
     with db_conn.cursor() as cur:
         cur.execute(
@@ -491,37 +490,114 @@ Date,Libelle,Debit,Credit
             """,
             (match_2_id, tenant_id, client_id, wr_id),
         )
+        cur.execute(
+            """
+            INSERT INTO reconciliation_match_items (id, tenant_id, client_entity_id, match_id, bank_transaction_id, amount_mad)
+            VALUES (%s, %s, %s, %s, %s, -5000.00);
+            """,
+            (uuid.uuid4(), tenant_id, client_id, match_2_id, bank_tx_id),
+        )
+        cur.execute(
+            """
+            INSERT INTO reconciliation_match_items (id, tenant_id, client_entity_id, match_id, journal_proposal_id, amount_mad)
+            VALUES (%s, %s, %s, %s, %s, 5000.00);
+            """,
+            (uuid.uuid4(), tenant_id, client_id, match_2_id, prop_b),
+        )
 
-    with pytest.raises(psycopg.errors.UniqueViolation, match="one_accepted_match_per_bank_line"):
-        with db_conn.cursor() as cur:
-            # Use savepoint so transaction remains usable
-            with db_conn.transaction():
-                cur.execute(
-                    """
-                    INSERT INTO reconciliation_match_items (id, tenant_id, client_entity_id, match_id, bank_transaction_id, amount_mad)
-                    VALUES (%s, %s, %s, %s, %s, -5000.00);
-                    """,
-                    (uuid.uuid4(), tenant_id, client_id, match_2_id, bank_tx_id),
-                )
+    # Assert both candidates coexist with match_status = 'proposed'
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM reconciliation_match_items WHERE tenant_id = %s AND bank_transaction_id = %s;",
+            (tenant_id, bank_tx_id),
+        )
+        assert cur.fetchone()[0] == 2
 
-    # 5. Accept Match 1
+    # 5. Accepting a second match for an already-matched line FAILS
+    # Accept Match 1
     res1 = accept_reconciliation_match(db_conn, tenant_id, match_1_id, actor_id=str(user_id))
     assert res1["status"] == "accepted"
 
-    # Match 2 cannot be accepted (has no bank lines or conflicts)
-    with pytest.raises(ValueError):
+    # Accepting Match 2 must fail (app logic and DB unique index block it)
+    with pytest.raises((ValueError, psycopg.errors.UniqueViolation)):
         accept_reconciliation_match(db_conn, tenant_id, match_2_id, actor_id=str(user_id))
+
+    # 6. A rejected match does NOT block a new match
+    # Reject Match 1
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "UPDATE reconciliation_matches SET status = 'rejected' WHERE tenant_id = %s AND id = %s;",
+            (tenant_id, match_1_id),
+        )
+
+    # Now Match 2 can be accepted cleanly!
+    res2 = accept_reconciliation_match(db_conn, tenant_id, match_2_id, actor_id=str(user_id))
+    assert res2["status"] == "accepted"
 
     # Invariant verified: exactly ONE accepted match for bank_tx_id
     with db_conn.cursor() as cur:
         cur.execute(
             """
             SELECT count(*)
-            FROM reconciliation_match_items rmi
-            JOIN reconciliation_matches rm ON rm.id = rmi.match_id AND rm.tenant_id = rmi.tenant_id
-            WHERE rmi.tenant_id = %s AND rmi.bank_transaction_id = %s AND rm.status = 'accepted';
+            FROM reconciliation_match_items
+            WHERE tenant_id = %s AND bank_transaction_id = %s AND match_status = 'accepted';
             """,
             (tenant_id, bank_tx_id),
         )
-        accepted_count = cur.fetchone()[0]
-        assert accepted_count == 1
+        assert cur.fetchone()[0] == 1
+
+
+def test_reconciliation_withholding_other_5_pct_is_detected(recon_test_env, db_conn):
+    """LF 2026 5% IS withholding on listed services/rents produces difference_kind 'withholding_other'."""
+    tenant_id = recon_test_env["tenant_id"]
+    client_id = recon_test_env["client_id"]
+    wr_id = recon_test_env["work_request_id"]
+    bank_acc_id = recon_test_env["bank_account_id"]
+    user_id = recon_test_env["user_id"]
+
+    # 1. Invoice TTC: 10,000.00 MAD (5% IS withholding = 500.00 MAD)
+    inv = {
+        "invoice_number": {"value": "FA-SERVICE-2026-001"},
+        "invoice_date": {"value": "2026-03-05"},
+        "supplier_name": {"value": "Client Prestation SARL"},
+        "total_ht": {"value": 8333.33},
+        "total_vat": {"value": 1666.67},
+        "total_ttc": {"value": 10000.00},
+    }
+    prop_id = _seed_document_and_proposal(db_conn, tenant_id, client_id, wr_id, "invoice_sale", inv)
+
+    # 2. Bank receipt of 9,500.00 MAD (10,000 - 500)
+    doc_id = uuid.uuid4()
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO documents (id, tenant_id, client_entity_id, work_request_id, doc_type, original_filename, source_channel, status)
+            VALUES (%s, %s, %s, %s, 'bank_statement', 'releve_is_5pct.csv', 'console', 'received');
+            """,
+            (doc_id, tenant_id, client_id, wr_id),
+        )
+    csv_bytes = b"""# Solde initial: 100000.00
+# Solde final: 109500.00
+Date,Libelle,Debit,Credit
+2026-03-08,VIR ENCAISSEMENT CLIENT SERVICE PRESTATION,0.00,9500.00
+"""
+    ingest_bank_statement(
+        conn=db_conn,
+        tenant_id=tenant_id,
+        client_entity_id=client_id,
+        bank_account_id=bank_acc_id,
+        document_id=doc_id,
+        file_bytes=csv_bytes,
+        filename="releve_is_5pct.csv",
+        work_request_id=wr_id,
+        actor_id=str(user_id),
+    )
+
+    matches = generate_reconciliation_matches(db_conn, tenant_id, client_id, wr_id, date_window_days=60)
+    withholding_other_matches = [m for m in matches if m.get("difference_kind") == "withholding_other"]
+
+    assert len(withholding_other_matches) == 1
+    m = withholding_other_matches[0]
+    assert m["difference_mad"] == 500.00
+    assert m["difference_kind"] == "withholding_other"
+

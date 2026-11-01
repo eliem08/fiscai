@@ -1,0 +1,26 @@
+{
+  "bank_name": "Banque Populaire",
+  "bank_code": "013",
+  "status": "awaiting_real_samples",
+  "layout": {
+    "header_identifiers": ["BANQUE POPULAIRE", "RELEVE DE COMPTE"],
+    "rib_pattern": "RIB\\s*:\\s*([0-9]{24})",
+    "opening_balance_labels": ["SOLDE PRECEDENT", "SOLDE AU"],
+    "closing_balance_labels": ["NOUVEAU SOLDE", "SOLDE DE FIN DE PERIODE"],
+    "table_columns": ["date", "date_valeur", "libelle", "debit", "credit"],
+    "number_format": {
+      "thousands_separator": " ",
+      "decimal_separator": ","
+    }
+  },
+  "sample_stub_lines": [
+    "BANQUE POPULAIRE - RELEVE DE COMPTE",
+    "RIB : 013780000123456789012345",
+    "Période du 01/03/2026 au 31/03/2026",
+    "SOLDE PRECEDENT AU 01/03/2026 : 84 500,00 MAD",
+    "04/03/2026 04/03/2026 CHQ PAYE FOURNISSEUR STE BERBERE 15 200,00",
+    "15/03/2026 15/03/2026 REMISE CHQ CLIENT SAHARA NEGOCE 32 100,00",
+    "31/03/2026 31/03/2026 FRAIS DE GESTION DE COMPTE 110,00",
+    "NOUVEAU SOLDE AU 31/03/2026 : 101 290,00 MAD"
+  ]
+}

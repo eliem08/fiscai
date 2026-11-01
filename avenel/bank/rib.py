@@ -2,9 +2,11 @@
 
 Complies with:
 - Bank Al-Maghrib standards: 24-digit format, mod-97 key verification.
-- Rule A.1: Algorithm and format loaded from /jurisdiction/ma/*.yaml.
+- Rule A.1: Algorithm, format, and bank codes loaded from /jurisdiction/ma/*.yaml.
 - Rule A.2: No numeric literals outside /jurisdiction/.
-- Part D: rib_encrypted (pgp/AES-GCM encrypted), rib_sha256, rib_last4.
+- Part D: rib_encrypted (AES-GCM/Fernet encrypted), rib_sha256, rib_last4.
+- Security: Key management documented. Dev: key file outside repo. Prod: KMS.
+  App refuses to start without key. rib_encrypted never in logs or API responses.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import base64
 import hashlib
 import os
 import re
+from pathlib import Path
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -21,9 +24,22 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from avenel.jurisdiction.loader import get_jurisdiction_pack
 
 
+class RibKeyMissingError(RuntimeError):
+    """Raised when neither AVENEL_RIB_KEY_FILE nor AVENEL_KMS_KEY is configured."""
+
+
 def clean_rib(rib: str) -> str:
     """Removes spaces, tabs, dashes, and other non-digit separators from a RIB."""
     return re.sub(r"\D", "", rib or "")
+
+
+def get_known_bank_codes() -> dict[str, str]:
+    """Loads Moroccan bank codes mapping from jurisdiction pack (identifiers.rib.bank_codes)."""
+    pack = get_jurisdiction_pack()
+    rule = pack.get_rule("identifiers.rib.bank_codes")
+    if rule and isinstance(rule.get("value"), dict):
+        return {str(k): str(v) for k, v in rule["value"].items()}
+    return {}
 
 
 def extract_bank_code(rib: str) -> str:
@@ -96,9 +112,37 @@ def mask_rib(rib: str) -> str:
     return f"{bank} {'*' * 17} {last4}"
 
 
+def get_rib_encryption_raw_key() -> bytes:
+    """Retrieves raw key bytes from file (dev: outside repo) or env (prod: KMS).
+
+    Refuses execution and raises RibKeyMissingError if neither source is configured.
+    """
+    key_file = os.getenv("AVENEL_RIB_KEY_FILE")
+    if key_file:
+        key_path = Path(key_file)
+        if not key_path.exists():
+            raise RibKeyMissingError(f"Fichier de clé de chiffrement RIB introuvable : {key_file}")
+        with open(key_path, "rb") as f:
+            raw = f.read().strip()
+            if not raw:
+                raise RibKeyMissingError(f"Fichier de clé de chiffrement RIB vide : {key_file}")
+            return raw
+
+    kms_key = os.getenv("AVENEL_KMS_KEY")
+    if kms_key:
+        raw_kms = kms_key.strip().encode("utf-8")
+        if raw_kms:
+            return raw_kms
+
+    raise RibKeyMissingError(
+        "Clé de chiffrement RIB absente. En développement, définir AVENEL_RIB_KEY_FILE "
+        "pointant vers un fichier hors du dépôt. En production, définir AVENEL_KMS_KEY."
+    )
+
+
 def _get_encryption_key(secret_key: bytes | None = None) -> Fernet:
-    """Derives a Fernet encryption key from provided key or environment."""
-    raw = secret_key or os.getenv("AVENEL_KMS_KEY", "avenel-default-bank-kms-secret-salt").encode("utf-8")
+    """Derives a Fernet encryption key from provided key or configured key source."""
+    raw = secret_key if secret_key is not None else get_rib_encryption_raw_key()
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,

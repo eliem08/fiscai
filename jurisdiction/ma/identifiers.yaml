@@ -38,6 +38,24 @@
   status: "verified"
   note: "Clé de contrôle mod-97: 97 - ((N * 100) % 97)"
 
+- key: "identifiers.rib.bank_codes"
+  value:
+    "007": "Attijariwafa bank"
+    "011": "Bank of Africa"
+    "013": "Banque Populaire"
+    "019": "BMCI"
+    "021": "Crédit Agricole du Maroc"
+    "022": "Société Générale Maroc"
+    "050": "Al Barid Bank"
+    "230": "CIH Bank"
+    "310": "CFG Bank"
+  effective_from: "2000-01-01"
+  effective_to: null
+  source: "Bank Al-Maghrib - Nomenclature des codes guichets et banques"
+  status: "needs_expert"
+  note: "TODO(EXPERT): Codes banques marocaines (BAM). Le code CIH (230 vs 004/007) est soumis à validation expert."
+
+
 - key: "identifiers.rc.format"
   value: "^[0-9]{1,10}$"
   effective_from: "2000-01-01"

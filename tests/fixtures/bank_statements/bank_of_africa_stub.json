@@ -1,0 +1,26 @@
+{
+  "bank_name": "Bank of Africa",
+  "bank_code": "011",
+  "status": "awaiting_real_samples",
+  "layout": {
+    "header_identifiers": ["BANK OF AFRICA", "RELEVE DES MOUVEMENTS"],
+    "rib_pattern": "RIB\\s*:\\s*([0-9]{24})",
+    "opening_balance_labels": ["SOLDE INITIAL", "SOLDE AU"],
+    "closing_balance_labels": ["SOLDE FINAL", "SOLDE DE CLOTURE"],
+    "table_columns": ["date_operation", "valeur", "nature_operation", "debit", "credit"],
+    "number_format": {
+      "thousands_separator": " ",
+      "decimal_separator": ","
+    }
+  },
+  "sample_stub_lines": [
+    "BANK OF AFRICA - RELEVE DES MOUVEMENTS",
+    "RIB : 011780000123456789012345",
+    "Mois de Mars 2026",
+    "SOLDE INITIAL AU 01/03/2026 : 210 000,00 MAD",
+    "08/03/2026 08/03/2026 VIREMENT RECU TECH SARL 45 000,00",
+    "18/03/2026 18/03/2026 VIREMENT EMIS LOYER CASABLANCA 18 000,00",
+    "31/03/2026 31/03/2026 PACK BANCAIRE PRO 165,00",
+    "SOLDE FINAL AU 31/03/2026 : 236 835,00 MAD"
+  ]
+}

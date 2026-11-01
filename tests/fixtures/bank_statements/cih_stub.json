@@ -1,0 +1,27 @@
+{
+  "bank_name": "CIH Bank",
+  "bank_code": "230",
+  "status": "awaiting_real_samples",
+  "notes": "Code banque 230 status needs_expert TODO(EXPERT)",
+  "layout": {
+    "header_identifiers": ["CIH BANK", "EXTRAIT DE RELEVE"],
+    "rib_pattern": "RIB\\s*:\\s*([0-9]{24})",
+    "opening_balance_labels": ["SOLDE DE DEPART", "ANCIEN SOLDE"],
+    "closing_balance_labels": ["NOUVEAU SOLDE", "SOLDE DE FIN"],
+    "table_columns": ["date", "date_valeur", "operations", "debit", "credit"],
+    "number_format": {
+      "thousands_separator": " ",
+      "decimal_separator": ","
+    }
+  },
+  "sample_stub_lines": [
+    "CIH BANK - EXTRAIT DE RELEVE BANCAIRE",
+    "RIB : 230780000123456789012345",
+    "Du 01/03/2026 au 31/03/2026",
+    "SOLDE DE DEPART AU 01/03/2026 : 50 000,00 MAD",
+    "06/03/2026 06/03/2026 VIR EMIS FOURNISSEUR BUREAU 6 500,00",
+    "20/03/2026 20/03/2026 VIR RECU FACTURE F2026-004 15 000,00",
+    "31/03/2026 31/03/2026 COMMISSIONS SERVICES EN LIGNE 88,00",
+    "NOUVEAU SOLDE AU 31/03/2026 : 58 412,00 MAD"
+  ]
+}

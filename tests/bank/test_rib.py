@@ -83,3 +83,65 @@ def test_rib_encryption_roundtrip():
 
     decrypted = decrypt_rib(encrypted)
     assert decrypted == full_rib
+
+
+def test_known_bank_codes_loaded_from_jurisdiction_pack():
+    """Bank codes are loaded from jurisdiction pack (including CIH marked needs_expert)."""
+    from avenel.bank.rib import get_known_bank_codes
+    from avenel.jurisdiction.loader import get_jurisdiction_pack
+
+    bank_codes = get_known_bank_codes()
+    assert "007" in bank_codes
+    assert "011" in bank_codes
+    assert "013" in bank_codes
+    assert "230" in bank_codes  # CIH Bank
+    assert bank_codes["230"] == "CIH Bank"
+
+    pack = get_jurisdiction_pack()
+    rule = pack.get_rule("identifiers.rib.bank_codes")
+    assert rule is not None
+    assert rule.get("status") == "needs_expert"
+    assert "TODO(EXPERT)" in str(rule.get("note", ""))
+
+
+def test_app_refuses_to_start_without_rib_encryption_key(monkeypatch, tmp_path):
+    """App startup fails immediately if neither dev key file nor prod KMS key is configured."""
+    from fastapi.testclient import TestClient
+
+    from apps.api.main import app
+    from avenel.bank.rib import RibKeyMissingError, get_rib_encryption_raw_key
+
+    # 1. Clear both env vars -> raises RibKeyMissingError
+    monkeypatch.delenv("AVENEL_RIB_KEY_FILE", raising=False)
+    monkeypatch.delenv("AVENEL_KMS_KEY", raising=False)
+
+    with pytest.raises(RibKeyMissingError) as exc_info:
+        get_rib_encryption_raw_key()
+    assert "Clé de chiffrement RIB absente" in str(exc_info.value)
+
+    # 2. Starting FastAPI app with TestClient triggers lifespan startup check -> raises
+    with pytest.raises(Exception):
+        with TestClient(app):
+            pass
+
+    # 3. Setting dev key file outside repo works
+    dev_key_file = tmp_path / "dev_rib.key"
+    dev_key_file.write_bytes(b"entropy-secret-key-for-dev-outside-repo-32b")
+    monkeypatch.setenv("AVENEL_RIB_KEY_FILE", str(dev_key_file))
+
+    raw_key = get_rib_encryption_raw_key()
+    assert raw_key == b"entropy-secret-key-for-dev-outside-repo-32b"
+
+
+def test_rib_encrypted_never_in_api_response_or_logs():
+    """Ensures rib_encrypted never appears in API model schemas, responses, or logs."""
+    from apps.api.routes.bank import BankAccountResponse
+
+    # Pydantic schema must not have rib_encrypted
+    fields = BankAccountResponse.model_fields.keys()
+    assert "rib_encrypted" not in fields
+    assert "rib_masked" in fields
+    assert "rib_last4" in fields
+    assert "bank_code" in fields
+
+

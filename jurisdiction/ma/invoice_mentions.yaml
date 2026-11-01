@@ -108,3 +108,28 @@
   status: "verified"
   note: "Tolérance arithmétique pour contrôle du solde de relevé bancaire"
 
+- key: "accounting.suspense.default_account"
+  value: "4711"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGNC — Comptes d'attente à régulariser"
+  status: "needs_expert"
+  note: "TODO(EXPERT): Compte d'attente par défaut pour lignes bancaires non rapprochées (4711/4712 vs 3911 à confirmer)"
+
+- key: "accounting.bank_fees.default_account"
+  value: "6147"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGNC — Services bancaires"
+  status: "needs_expert"
+  note: "TODO(EXPERT): Compte de charges suggéré par défaut pour frais et commissions bancaires (6147)"
+
+- key: "accounting.bank_fees.default_vat_account"
+  value: "34552"
+  effective_from: "2026-01-01"
+  effective_to: null
+  source: "CGNC — État, TVA récupérable sur charges"
+  status: "needs_expert"
+  note: "TODO(EXPERT): Compte de TVA déductible suggéré pour TVA sur commissions bancaires (34552)"
+
+

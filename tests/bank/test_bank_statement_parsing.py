@@ -203,3 +203,43 @@ Date,Libelle,Debit,Credit
         assert row[1] == "blocking"
         assert row[2] == "open"
         assert row[3] == doc_id
+
+
+def test_bank_statement_fixture_stubs_awaiting_real_samples():
+    """Verify that all 4 Moroccan bank layout fixture stubs exist and conform to schema.
+
+    Banks covered: Attijariwafa bank (007), Banque Populaire (013),
+    Bank of Africa (011), and CIH Bank (230).
+    All are marked status='awaiting_real_samples'.
+    """
+    import json
+    import pathlib
+    from avenel.bank.rib import get_known_bank_codes
+
+    fixtures_dir = pathlib.Path(__file__).parent.parent / "fixtures" / "bank_statements"
+    expected_banks = {
+        "007": "attijariwafa_stub.json",
+        "013": "bp_stub.json",
+        "011": "bank_of_africa_stub.json",
+        "230": "cih_stub.json",
+    }
+
+    known_codes = get_known_bank_codes()
+
+    for bank_code, filename in expected_banks.items():
+        assert bank_code in known_codes, f"Bank code {bank_code} must be defined in jurisdiction pack"
+        stub_file = fixtures_dir / filename
+        assert stub_file.exists(), f"Stub file {filename} must exist"
+
+        data = json.loads(stub_file.read_text(encoding="utf-8"))
+        assert data["bank_code"] == bank_code
+        assert data["status"] == "awaiting_real_samples"
+        assert "layout" in data
+        layout = data["layout"]
+        assert "header_identifiers" in layout and len(layout["header_identifiers"]) > 0
+        assert "rib_pattern" in layout
+        assert "opening_balance_labels" in layout
+        assert "closing_balance_labels" in layout
+        assert "table_columns" in layout
+        assert len(data.get("sample_stub_lines", [])) >= 5
+
