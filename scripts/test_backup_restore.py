@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Scripted Backup and Restore Verification Test per Phase 5b requirements.
 
 Procedures:
