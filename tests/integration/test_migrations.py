@@ -10,8 +10,20 @@ from avenel.infrastructure.migrations import (
 
 def test_migrations_forward_and_rollback_cycle(postgres_url: str):
     """Ensure all migrations can be applied, rolled back down, and re-applied cleanly."""
-    # 1. Rollback down to clean state
+    # 0. Clean test data so down migrations don't encounter constraint conflicts with leftover test rows
     with get_connection(postgres_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                DO $$
+                DECLARE
+                    r RECORD;
+                BEGIN
+                    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                        EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
+                    END LOOP;
+                END $$;
+            """)
+        conn.commit()
         applied = get_applied_versions(conn)
 
     for _ in range(len(applied)):

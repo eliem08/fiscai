@@ -494,7 +494,7 @@ def test_altering_accepted_match_after_approval_refuses_export(approval_test_env
         cur.execute(
             """
             INSERT INTO reconciliation_matches (id, tenant_id, client_entity_id, work_request_id, status, difference_kind, difference_mad)
-            VALUES (%s, %s, %s, %s, 'accepted', 'none', 0.0);
+            VALUES (%s, %s, %s, %s, 'accepted', NULL, 0.0);
             """,
             (match_id, t_id, c_id, w_id),
         )

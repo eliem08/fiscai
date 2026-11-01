@@ -480,16 +480,8 @@ def decide_work_request_approval(
                 """,
                 (tenant_id, client_id, wr_id),
             )
-
-            # Update work request status
-            cur.execute(
-                """
-                UPDATE work_requests
-                SET status = 'completed', updated_at = now()
-                WHERE tenant_id = %s AND id = %s;
-                """,
-                (tenant_id, wr_id),
-            )
+            # Work request remains in 'awaiting_approval' until create_export
+            # explicitly transitions it: awaiting_approval -> exporting -> completed / completed_with_open_items
         elif decision == "rejected":
             cur.execute(
                 """
