@@ -145,6 +145,9 @@ jobs:
         run: |
           npx playwright test e2e/accessibility.spec.ts e2e/pilot-journey.spec.ts
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - name: Validate Terraform Configuration
         run: |
           terraform -chdir=infra/terraform init -backend=false
