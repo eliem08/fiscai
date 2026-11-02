@@ -15,7 +15,6 @@ export interface FileMetricsSummary {
   work_request_id: string;
   status: string;
   client_name: string;
-  client_ice: string;
   period_name: string;
   file_review_seconds: number;
   file_fields_corrected: number;
@@ -38,6 +37,8 @@ export interface InternalMetricsData {
     total_provider_cost_mad: number;
     accepted_files_count: number;
     average_cost_per_file_mad: number;
+    provider_cost_label_fr?: string;
+    provider_cost_label_en?: string;
   };
   files: FileMetricsSummary[];
 }
@@ -58,13 +59,14 @@ export const defaultMockMetrics: InternalMetricsData = {
     total_provider_cost_mad: 0.042,
     accepted_files_count: 1,
     average_cost_per_file_mad: 0.042,
+    provider_cost_label_fr: 'Coût fournisseurs par dossier validé',
+    provider_cost_label_en: 'Provider cost per accepted file',
   },
   files: [
     {
       work_request_id: 'wr-atlas-001',
       status: 'approved',
       client_name: 'Société Atlas Négoce SARL',
-      client_ice: '001234567890123',
       period_name: '2026-10',
       file_review_seconds: 185,
       file_fields_corrected: 1,
@@ -180,14 +182,37 @@ export function InternalMetricsScreen({
         <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
           <div className="flex items-center gap-3 text-slate-600 mb-2">
             <DollarSign className="w-5 h-5 text-emerald-800" />
-            <span className="text-xs uppercase tracking-wider font-semibold">Coût unitaire / dossier</span>
+            <span className="text-xs uppercase tracking-wider font-semibold">Coût fournisseurs par dossier validé</span>
           </div>
           <div className="text-2xl font-bold text-slate-900" data-testid="metric-cost-per-file">
             {summary.average_cost_per_file_mad.toFixed(4)} MAD
           </div>
           <div className="text-xs text-slate-500 mt-1">
-            {summary.total_provider_calls} appel(s) LLM / OCR souverain
+            Provider cost per accepted file ({summary.total_provider_calls} appel(s))
           </div>
+        </div>
+      </div>
+
+      {/* Placeholders for compute and reviewer cost models (pilot telemetry) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <span className="text-xs uppercase tracking-wider font-semibold text-slate-500">Coût calcul serveur (estimé) / Compute cost</span>
+            <div className="text-sm font-medium text-slate-700 mt-0.5">Inférence locale & runtime conteneurs</div>
+          </div>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-slate-200 text-slate-700 border border-slate-300">
+            Non calculé (pilote)
+          </span>
+        </div>
+
+        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <span className="text-xs uppercase tracking-wider font-semibold text-slate-500">Coût réviseur humain / Reviewer cost</span>
+            <div className="text-sm font-medium text-slate-700 mt-0.5">Taux horaire collaborateur par dossier</div>
+          </div>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-slate-200 text-slate-700 border border-slate-300">
+            Non calculé (pilote)
+          </span>
         </div>
       </div>
 
@@ -212,7 +237,7 @@ export function InternalMetricsScreen({
               <th className="px-4 py-3 text-right">Champs corrigés</th>
               <th className="px-4 py-3 text-right">Écritures</th>
               <th className="px-4 py-3 text-right">Anomalies</th>
-              <th className="px-6 py-3 text-right">Coût prestataire</th>
+              <th className="px-6 py-3 text-right">Coût fournisseurs</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white">
@@ -222,7 +247,6 @@ export function InternalMetricsScreen({
                   <tr key={`${file.work_request_id}-${user.user_id}`} className="hover:bg-slate-50">
                     <td className="px-6 py-4 font-medium text-slate-900">
                       <div>{file.client_name}</div>
-                      <div className="text-xs text-slate-500 font-mono">ICE: {file.client_ice}</div>
                     </td>
                     <td className="px-4 py-4 font-mono text-slate-700">{file.period_name}</td>
                     <td className="px-4 py-4 text-slate-700">

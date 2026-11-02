@@ -106,3 +106,16 @@
 - **V14.2 Isolation des conteneurs :** (Partial)
   - Dockerfiles de production exécutés sous utilisateur non-root sans privilège (`avenel`, UID 10001).
   - Montage de volumes en lecture seule pour les configurations sensibles.
+
+---
+
+## 7. Éléments ASVS L2 Partiels ou Non Satisfaits — Risques Acceptés et Plans de Remédiation
+
+La grille ASVS Niveau 2 comprend 22 contrôles audités : **19 Met, 2 Partial, 1 Not Met**.
+
+| Réf. ASVS | Titre & Exigence | Statut | Justification / Risque Accepté pour le Pilote | Plan de Remédiation & Échéance |
+| :--- | :--- | :---: | :--- | :--- |
+| **V6.4.1** | **Cryptographie matérielle (HSM PKCS#11)**<br>Exigence de stockage des clés maîtresses de chiffrement dans un module de sécurité matériel (HSM FIPS 140-2 L3). | **Not Met** | **Risque accepté :** Déploiement pilote souverain sur infrastructure dédiée (N+ONE / Inwi). Clé maîtresse AES-256-GCM enveloppée injectée au runtime via variable d'environnement chiffrée KMS hôte avec permissions restreintes (`chmod 400`, utilisateur non-root `avenel`). Risque d'exfiltration directe mitigé par l'absence d'exposition publique directe du port Postgres et le chiffrement au repos du stockage bloc. | **Phase 7 (GA / Banques) :** Intégration d'un module HSM PKCS#11 certifié FIPS 140-2 Niveau 3 pour le déchiffrement des clés d'enveloppe de RIB et la signature cryptographique des exports fiscaux. |
+| **V14.2.3** | **Système de fichiers conteneur en lecture seule**<br>Exigence d'exécution avec système de fichiers racine immuable (`read-only root filesystem`). | **Partial** | **Risque accepté :** Tous les conteneurs s'exécutent sous utilisateur non-root non privilégié (`UID 10001`, `avenel`). Les configurations Nginx et scripts d'initialisation de base de données sont montés en `:ro`. Les répertoires `/app/data/documents` et `/tmp` nécessitent temporairement des écritures pour l'inférence ONNX et le tamponnage transitoire des pages avant analyse antivirale ClamAV. | **Pré-production GA :** Activation de `read_only: true` sur le service API dans `docker-compose.prod.yml` et délégation des répertoires temporaires à un montage mémoire `tmpfs` non-exécutable (`tmpfs: /tmp:rw,noexec,nosuid,size=512m`). |
+| **V3.3.4** | **Révocation synchrone des sessions (Backchannel Logout)**<br>Exigence d'invalidation instantanée des jetons d'accès actifs lors d'un changement de mot de passe ou d'une déconnexion initiée par l'IdP. | **Partial** | **Risque accepté :** Les jetons d'accès JWT ont une durée de vie volontairement courte (15 minutes / 900s). La rotation du jeton de rafraîchissement dans Keycloak invalide immédiatement tout nouveau renouvellement. Les actions critiques financières (approbation, round-trip) exigent en outre une ré-authentification MFA récente datant de moins de 5 minutes (`auth_time < 300s`). | **Phase 6 / Audit de certification :** Implémentation du webhook OIDC Back-Channel Logout (RFC 8693) dans FastAPI pour alimenter une table de révocation en temps réel sous PostgreSQL (`revoked_token_ids`) interrogée en mémoire. |
+

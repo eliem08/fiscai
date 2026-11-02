@@ -100,3 +100,91 @@ def test_internal_metrics_rbac_owner_and_operator_allowed(mock_session_owner, mo
         assert resp.status_code == 200
     finally:
         app.dependency_overrides.clear()
+
+
+def test_no_identifier_values_in_metrics_responses(mock_session_owner):
+    """Review metrics must store/return counts and field keys only, NEVER raw identifiers (e.g. ICE, RIB) or field values."""
+    import re
+    from avenel.telemetry.review_effort import get_internal_metrics_summary
+
+    wr_id = uuid.uuid4()
+    u_id = uuid.uuid4()
+    t_id = mock_session_owner.tenant_id
+
+    # Mock DB cursor returning effort rows and provider costs
+    class FakeCursor:
+        def __init__(self):
+            self.query_count = 0
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def execute(self, query, params=None):
+            self.query_count += 1
+        def fetchall(self):
+            if self.query_count == 1:
+                # effort_rows: wr_id, status, client_name, period_name, user_id, user_name, user_email,
+                # active_review_seconds, fields_corrected, entries_edited, issues_resolved, updated_at
+                return [
+                    (
+                        wr_id,
+                        "approved",
+                        "Société Atlas SARL",
+                        "2026-10",
+                        u_id,
+                        "Youssef Bennani",
+                        "youssef@atlas.ma",
+                        180,
+                        2,
+                        1,
+                        1,
+                        "2026-11-01T12:00:00Z",
+                    )
+                ]
+            return []
+        def fetchone(self):
+            # provider_calls summary: total_cost, total_calls, succeeded, refused
+            return (0.042, 3, 3, 0)
+
+    class FakeConn:
+        def cursor(self):
+            return FakeCursor()
+
+    metrics = get_internal_metrics_summary(FakeConn(), t_id)
+
+    # 1. Verify response structure contains counts and field keys only
+    summary = metrics["summary"]
+    assert summary["total_fields_corrected"] == 2
+    assert summary["total_entries_edited"] == 1
+    assert summary["total_issues_resolved"] == 1
+    assert summary["provider_cost_label_fr"] == "Coût fournisseurs par dossier validé"
+    assert summary["provider_cost_label_en"] == "Provider cost per accepted file"
+
+    # 2. Verify compute and reviewer cost placeholders are clearly labelled and marked not_computed_yet
+    assert summary["compute_cost"]["status"] == "not_computed_yet"
+    assert "Coût calcul" in summary["compute_cost"]["label_fr"]
+    assert summary["compute_cost"]["amount_mad"] is None
+
+    assert summary["reviewer_cost"]["status"] == "not_computed_yet"
+    assert "Coût réviseur" in summary["reviewer_cost"]["label_fr"]
+    assert summary["reviewer_cost"]["amount_mad"] is None
+
+    # 3. String representation scan: verify zero 15-digit ICE or 24-digit RIB values appear
+    response_str = str(metrics)
+
+    # Must NOT contain 'client_ice' key
+    assert "client_ice" not in response_str
+
+    # Must NOT contain any 15-digit numeric sequence (Moroccan ICE)
+    assert not re.search(r"\b\d{15}\b", response_str)
+
+    # Must NOT contain any 24-digit numeric sequence (Moroccan RIB)
+    assert not re.search(r"\b\d{24}\b", response_str)
+
+    # In files list, client_ice must not be present
+    for f in metrics["files"]:
+        assert "client_ice" not in f
+        assert f["client_name"] == "Société Atlas SARL"
+        assert f["compute_cost"]["status"] == "not_computed_yet"
+        assert f["reviewer_cost"]["status"] == "not_computed_yet"
+

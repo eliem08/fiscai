@@ -83,14 +83,13 @@ def get_internal_metrics_summary(
     require_tenant_context(conn)
 
     with conn.cursor() as cur:
-        # 1. Fetch review effort per file and user
+        # 1. Fetch review effort per file and user (counts and field keys only, never field values or identifiers)
         cur.execute(
             """
             SELECT
                 r.work_request_id,
                 w.status AS work_request_status,
                 ce.name AS client_name,
-                ce.ice AS client_ice,
                 p.period_name,
                 u.id AS user_id,
                 u.full_name AS user_name,
@@ -155,40 +154,53 @@ def get_internal_metrics_summary(
 
     for row in effort_rows:
         wr_id = str(row[0])
-        total_seconds += row[8]
-        total_corrected += row[9]
-        total_edited += row[10]
-        total_resolved += row[11]
+        total_seconds += row[7]
+        total_corrected += row[8]
+        total_edited += row[9]
+        total_resolved += row[10]
 
         if wr_id not in files_map:
             files_map[wr_id] = {
                 "work_request_id": wr_id,
                 "status": row[1],
                 "client_name": row[2],
-                "client_ice": row[3],
-                "period_name": row[4],
+                "period_name": row[3],
                 "users": [],
                 "file_review_seconds": 0,
                 "file_fields_corrected": 0,
                 "file_entries_edited": 0,
                 "file_issues_resolved": 0,
                 "provider_cost_mad": 0.0,
+                "provider_cost_per_accepted_file_mad": 0.0,
+                "cost_per_accepted_file_mad": 0.0,
+                "compute_cost": {
+                    "status": "not_computed_yet",
+                    "label_fr": "Coût calcul serveur (estimé)",
+                    "label_en": "Compute cost (estimated)",
+                    "amount_mad": None,
+                },
+                "reviewer_cost": {
+                    "status": "not_computed_yet",
+                    "label_fr": "Coût réviseur humain",
+                    "label_en": "Reviewer cost",
+                    "amount_mad": None,
+                },
                 "billable_units": 0,
             }
 
         files_map[wr_id]["users"].append({
-            "user_id": str(row[5]),
-            "user_name": row[6],
-            "user_email": row[7],
-            "active_review_seconds": row[8],
-            "fields_corrected": row[9],
-            "entries_edited": row[10],
-            "issues_resolved": row[11],
+            "user_id": str(row[4]),
+            "user_name": row[5],
+            "user_email": row[6],
+            "active_review_seconds": row[7],
+            "fields_corrected": row[8],
+            "entries_edited": row[9],
+            "issues_resolved": row[10],
         })
-        files_map[wr_id]["file_review_seconds"] += row[8]
-        files_map[wr_id]["file_fields_corrected"] += row[9]
-        files_map[wr_id]["file_entries_edited"] += row[10]
-        files_map[wr_id]["file_issues_resolved"] += row[11]
+        files_map[wr_id]["file_review_seconds"] += row[7]
+        files_map[wr_id]["file_fields_corrected"] += row[8]
+        files_map[wr_id]["file_entries_edited"] += row[9]
+        files_map[wr_id]["file_issues_resolved"] += row[10]
 
     # Map usage records to files
     accepted_files_count = 0
@@ -204,8 +216,10 @@ def get_internal_metrics_summary(
     per_file_provider_cost = provider_cost_mad / files_count
     for f in files_map.values():
         f["provider_cost_mad"] = round(per_file_provider_cost, 4)
+        f["provider_cost_per_accepted_file_mad"] = round(per_file_provider_cost, 4)
         f["cost_per_accepted_file_mad"] = round(per_file_provider_cost, 4)
 
+    provider_cost_per_file = round(provider_cost_mad / max(1, accepted_files_count), 4)
     return {
         "summary": {
             "total_active_review_seconds": total_seconds,
@@ -216,7 +230,22 @@ def get_internal_metrics_summary(
             "total_provider_calls": provider_calls_count,
             "total_provider_cost_mad": round(provider_cost_mad, 4),
             "accepted_files_count": accepted_files_count,
-            "average_cost_per_file_mad": round(provider_cost_mad / max(1, accepted_files_count), 4),
+            "provider_cost_label_fr": "Coût fournisseurs par dossier validé",
+            "provider_cost_label_en": "Provider cost per accepted file",
+            "provider_cost_per_accepted_file_mad": provider_cost_per_file,
+            "average_cost_per_file_mad": provider_cost_per_file,
+            "compute_cost": {
+                "status": "not_computed_yet",
+                "label_fr": "Coût calcul serveur (estimé)",
+                "label_en": "Compute cost (estimated)",
+                "amount_mad": None,
+            },
+            "reviewer_cost": {
+                "status": "not_computed_yet",
+                "label_fr": "Coût réviseur humain",
+                "label_en": "Reviewer cost",
+                "amount_mad": None,
+            },
         },
         "files": list(files_map.values()),
     }

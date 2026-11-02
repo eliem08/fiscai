@@ -1328,24 +1328,79 @@ And the operators can show: zero cross-tenant access in tests, a verified audit 
 
 ---
 
-# Part K — Architecture Conformance & Pilot Verification Matrix
+# Part K — Decisions recorded during the build
 
-Version 2.1 conformance baseline for the Moroccan pilot deployment:
+The following 24 binding architectural decisions were established and recorded across the build phases (Phases 1 through 5) following human review:
 
-| Item | Architectural Specification | Implementation Anchor | Verification Gate |
-|---|---|---|---|
-| **K.1** | Scope-first authorization returning 404 for out-of-scope resources, 403 for role denials; forced PostgreSQL RLS on all tenant tables | `apps/api/deps.py`, `002_rls.up.sql` | `make rls-check`, `test_role_matrix.py` |
-| **K.2** | Zero domain rule invention: rules read from `/jurisdiction/ma/*.yaml`; unverified rules marked `status: needs_expert` | `/jurisdiction/ma/*.yaml` | `check_expert_sign_off.py` |
-| **K.3** | Zero numeric tax or legal literals in application code outside `/jurisdiction/` | `scripts/check_no_tax_literals.py` | `make lint` |
-| **K.4** | Human review loop: AI proposes extractions/entries, code validates invariants, humans confirm and approve | `avenel/extraction/`, `apps/api/routes/proposals.py` | Playwright E2E journey |
-| **K.5** | Append-only audit trail: SHA-256 genesis hash chain, immutable audit events, exports, and approvals | `avenel/evidence/`, `003_append_only.up.sql` | `make audit-verify` |
-| **K.6** | Strict double-entry balancing: CGNC chart of accounts, multi-rate TVA splits, explicit rounding gain/loss lines | `avenel/accounting/`, `005_rounding_directions.up.sql` | `test_journal_proposals.py` |
-| **K.7** | Bank statement ingestion, active BQ proposal uniqueness, and match state synchronization | `avenel/reconciliation/`, `006_reconciliation_refinements.up.sql`, `007_active_bq_proposal_unique.up.sql` | `test_reconciliation_refinements.py` |
-| **K.8** | File-level accountant sign-off with MFA, decider professional title check, and deterministic subject hash | `avenel/approvals/`, `008_round_trips_and_approval_policy.up.sql` | `test_approvals.py` |
-| **K.9** | Dual-format exports (Sage 100 French CSV, Odoo 17) and tamper-evident ZIP evidence pack | `avenel/exports/` | `test_golden_exports.py` |
-| **K.10** | Review effort telemetry: active review time, fields corrected, entries edited, issues resolved, provider costs | `avenel/telemetry/`, `009_review_metrics_and_rate_limits.up.sql` | `test_review_effort_metrics.py`, Playwright |
-| **K.11** | Frontend Web Architecture: Vite + React 18 SPA (ADR-001), unprivileged Nginx, Part E design tokens | `src/`, `docker/Dockerfile.web`, `docker/nginx.conf` | `npm test`, `npm run typecheck` |
-| **K.12** | Shared-store rate limiting across workers, security headers (CSP, HSTS) delivered via HTTP headers | `avenel/infrastructure/rate_limiter.py`, `apps/api/middleware.py` | `test_shared_rate_limiter.py` |
-| **K.13** | Sovereign Moroccan hosting: cloud-init provider-neutral VM bootstrap and EU fallback | `infra/terraform/main.tf`, `docker-compose.prod.yml` | `terraform validate` |
-| **K.14** | Automated backups, WAL archiving, Point-In-Time Recovery (PITR), and scripted isolated restore test | `scripts/test_backup_restore.py`, `docs/runbooks/restore.md` | Weekly CI restore drill |
+1. **Role × Action Scope Matrix (C.4 / ARCHITECTURE-notes):**
+   Multi-tenant authorization is scope-first: access to out-of-scope resources must return HTTP 404 (preventing enumeration attacks), while unauthorized actions on in-scope resources return HTTP 403. Forced PostgreSQL Row-Level Security (RLS) is applied on every tenant table as an independent second layer.
+
+2. **Pack Conflation Audit & Official Authorities (A.1):**
+   Domain rules must cite primary legal sources (e.g., Code Général des Impôts, Loi 9-88, Plan Comptable Général / CGNC 1989). Rules lacking definitive authority are marked `status: needs_expert` with `TODO(EXPERT)` and disabled until human expert sign-off.
+
+3. **Keycloak JWKS Integration & Dynamic Key Rotation (C.2 / ASVS V2.8):**
+   JWT authentication verifies RS256 signatures against Keycloak JWKS endpoints. Keys are cached with dynamic rotation on `kid` change; revoked keys are rejected immediately.
+
+4. **Migration Hash Freezing (A.6):**
+   Applied database migrations are immutable. A CI linter verifies SHA-256 checksums of migrations 001–008 to ensure historic migration files are never retroactively edited.
+
+5. **RFC 9470 MFA Step-Up Challenges (Part D / Part I):**
+   Critical mutations (accountant file approval, round-trip recording) require active multi-factor authentication. Requests lacking MFA return HTTP 401 with `WWW-Authenticate: Bearer error="insufficient_user_authentication"`. Re-authentication is required within 5 minutes (`auth_time < 300s`).
+
+6. **RFC 9457 Problem Details Error Envelopes (C.4):**
+   All error responses follow RFC 9457 `application/problem+json` format with standard fields (`type`, `title`, `status`, `detail`, `instance`).
+
+7. **Universal Normalized Bounding Boxes (D.6 / Part E):**
+   All document coordinate references use normalized `[x0, y0, x1, y1]` float coordinates in the range `[0.0, 1.0]`. UI overlays render with 160ms transitions.
+
+8. **ClamAV Antivirus Scanning & Quarantine (C.3 / ASVS V12):**
+   Uploaded documents must undergo ClamAV daemon malware inspection before intake. Infected files are quarantined (`status: quarantined`). If ClamAV signatures are stale (> 48h) or the scanner is down, intake is paused with user notification.
+
+9. **Exact Duplicate Detection (D.6):**
+   Exact duplicate files are detected by SHA-256 hash across `(tenant_id, client_entity_id, sha256)`. Re-submitting an identical document returns HTTP 200 with `document.resubmitted` without generating duplicate proposals.
+
+10. **Bilingual Arabic/Latin OCR Engine (C.3 / Part H):**
+    Document processing uses dual-script OCR with automatic per-page language detection, supporting French and Arabic text extraction.
+
+11. **Test Count Invariant Baseline (Part H):**
+    The automated CI quality gate fails if the pytest collection count drops below the recorded baseline, preventing accidental test deletion unless accompanied by `TESTS_REMOVED.md`.
+
+12. **UI Verification Copy Standards (Part E):**
+    User actions confirming extracted data use "Confirmer" / "Confirm", reserving "Valider" / "Validate" strictly for final legal accountant file sign-off.
+
+13. **Zero Silent Error Rate Gate on Financial Arithmetic (D.6 / Part H):**
+    Tax extraction requires strict arithmetic consistency: $HT + TVA = TTC$ within rounding tolerance. Discrepancies raise blocking issue `TOTALS_INCONSISTENT`.
+
+14. **FX Conversion Rounding Line (D.6):**
+    FX conversion residuals are posted to explicit rounding lines (`rounding_loss` / `rounding_gain` accounts resolved via `client_tax_mappings`), never to counterparty accounts. The counterparty line strictly equals invoice TTC converted at the transaction rate.
+
+15. **Tax Account Resolution via Client Mappings (D.6):**
+    Tax accounts resolve per client through `client_tax_mappings` with `approved_by`. If no approved mapping exists, no proposal line is created and blocking issue `ACCOUNT_UNMAPPED` is raised.
+
+16. **Physical Evidence References vs Rule References (D.6):**
+    `journal_lines.evidence_refs` strictly reference document page bounding boxes or bank lines. Legal citations and rule anchors are stored separately in `journal_proposals.rule_refs`. Lines containing only rule refs are rejected.
+
+17. **Probable Duplicate Detection Heuristics (D.6):**
+    Invoices from the same counterparty with either the same invoice number OR the same TTC amount within a pack-defined date window ($\pm 20$ days) raise review issue `DUPLICATE_PROBABLE`.
+
+18. **Temporal VAT Rate Transition (D.6):**
+    Rate validation is date-aware. The 14% VAT rate is accepted for invoices dated on or before 2025-12-31, but raises `VAT_RATE_UNKNOWN` for invoices dated 2026-01-01 or later per LF 2024 reform.
+
+19. **Reconciliation Matching Uniqueness Trigger (D.3 / Migration 006):**
+    `reconciliation_match_items.match_status` is synchronized with `reconciliation_matches.status` via a database trigger. A partial unique index on `(tenant_id, bank_transaction_id) WHERE match_status = 'accepted'` ensures a bank line cannot belong to two accepted matches while allowing multiple proposed candidates.
+
+20. **Bank Journal Proposal Lifecycle (D.3 / Migration 007):**
+    Every bank statement line maintains exactly one active BQ proposal. On ingestion, an unmatched line receives a suspense proposal (`5115`). Accepting a match supersedes the suspense proposal with a counterparty proposal in the same transaction. Rejecting a match restores the suspense proposal.
+
+21. **Moroccan RIB Security & Validation (D.3 / ASVS V5):**
+    Bank RIBs are validated via 24-digit modulo 97 checksum. Stored RIBs are encrypted at rest with AES-256-GCM, hashed with SHA-256 for duplicate lookup, and masked in UI and logs (`************1234`).
+
+22. **Corporate Tax (IS) 5% Withholding Calculation (D.3):**
+    The Moroccan 5% corporate income tax withholding base is HT (pre-tax amount), not TTC. Combined withholding (TVA withholding + IS withholding on HT) calculates expected net receipts deterministically.
+
+23. **File-Level Accountant Sign-Off & Segregation of Duties (D.4 / ASVS V4):**
+    Approval occurs exclusively at the monthly file level (`POST /v1/approvals/{id}:decide`), not per proposal. Segregation of duties prevents preparers from approving their own work (`decided_by != prepared_by`). The approver must possess verified professional registration (`expert_comptable` or `comptable_agree`).
+
+24. **Deterministic Subject Hash (D.4 / Migration 008):**
+    Approval binds to a canonical SHA-256 subject hash computed across all active proposals and accepted reconciliation matches, excluding volatile fields (timestamps, status, editor IDs). A hash mismatch during approval or export returns HTTP 409 `ApprovalStale`.
 
