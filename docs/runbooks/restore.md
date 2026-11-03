@@ -19,7 +19,9 @@ La stratégie repose sur trois composantes complémentaires :
    - Commande d'archivage : Expédition immédiate des segments WAL de 16 Mo vers le volume de stockage persistant chiffré (`wal_archive/`).
    - Permet de restaurer l'état exact de la base à la seconde près jusqu'à l'incident.
 3. **Réplication chiffrée quotidienne du stockage d'objets (Document Storage Replication) :**
-   - Synchronisation nocturne chiffrée AES-256-GCM de l'ensemble des pièces originales et packs de preuves (`documents/`) vers un second site d'hébergement souverain situé dans la même région de résidence (`ma-casablanca-1` ou `eu-west-1`).
+   > [!WARNING]
+   > **État d'avancement opérationnel :** La réplication off-host est actuellement **simulée en intégration continue (CI)** et **n'est pas encore configurée en production**. La configuration d'une cible réelle de sauvegarde off-host dans la même région de souveraineté (`<REGION_TBD>`) est un prérequis bloquant avant le premier téléversement de documents clients réels (voir `docs/pilot/go-live-checklist.md`).
+   - Synchronisation nocturne chiffrée AES-256-GCM de l'ensemble des pièces originales et packs de preuves (`documents/`) vers un second site d'hébergement souverain situé dans la même région de résidence (`<REGION_TBD>` ou `eu-west-1`).
    - Rétention : Conforme à la période légale de conservation (10 ans selon le CGI art. 145 / pack fiscal).
 
 ---

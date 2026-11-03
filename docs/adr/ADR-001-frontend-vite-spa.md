@@ -12,7 +12,7 @@
 In `ARCHITECTURE.md` Version 2.0 (Section C.2), the web layer was specified as:
 > `Next.js 15 App Router, TypeScript strict, Tailwind with the tokens in Part E only`
 
-During Phase 1–5b implementation, evaluation of operational constraints in Moroccan sovereign hosting environments (N+ONE Datacenter Casablanca, Inwi Cloud) and enterprise accounting firm network perimeters led to a re-evaluation of the frontend deployment topology.
+During Phase 1–5b implementation, evaluation of operational constraints in Moroccan sovereign hosting environments (N+ONE Datacenter, Inwi Cloud) *(unverified — confirm with provider)* and enterprise accounting firm network perimeters led to a re-evaluation of the frontend deployment topology.
 
 ## Decision
 
@@ -21,7 +21,7 @@ We adopt a **Vite + React 18 Single Page Application (SPA)** architecture, compi
 ## Rationale
 
 ### 1. Data Residency & Sovereign Datacenter Hardening
-Moroccan sovereign infrastructure (N+ONE, Inwi) requires minimal attack surfaces and strictly auditable runtime environments. A static SPA eliminates the requirement for a Node.js server runtime in production:
+Moroccan sovereign infrastructure (N+ONE, Inwi) *(unverified — confirm with provider)* requires minimal attack surfaces and strictly auditable runtime environments. A static SPA eliminates the requirement for a Node.js server runtime in production:
 - No Node.js process running with elevated privileges or listening on production ports.
 - Memory footprint is reduced from ~300MB (Node SSR) to <20MB (Nginx static delivery).
 - Immune to server-side template injection or SSR-specific Node vulnerabilities.

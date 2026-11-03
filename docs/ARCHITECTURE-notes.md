@@ -184,22 +184,22 @@ Pour assurer que la transition d'état au moment de l'approbation n'altère pas 
 
 ---
 
-## 12. Architecture de Stockage d'Objets S3 et Déclaration de Risque Object Lock (Pilot-1)
+## 12. Architecture de Stockage d'Objets S3 et Déclaration de Risque Object Lock (Pilot-1, Pilot-2)
 
 ### 12.1 Principes Directeurs
 1. **Élimination des volumes locaux en production :** Les documents ne sont jamais hébergés sur des volumes Docker locaux (`docdata` supprimé en production).
-2. **Stockage d'objets compatible S3 souverain :** Les documents sont hébergés sur stockage d'objets compatible S3 situé dans la région de résidence du tenant (`DATA_RESIDENCY_POLICY` : `MA_ONLY` à Casablanca ou `EU_ALLOWED` dans l'Union Européenne).
+2. **Stockage d'objets compatible S3 souverain :** Les documents sont hébergés sur stockage d'objets compatible S3 situé dans la région de résidence du tenant (`DATA_RESIDENCY_POLICY` : `MA_ONLY` dans la région `<REGION_TBD>` ou `EU_ALLOWED` dans l'Union Européenne).
 3. **Chiffrement au repos obligatoire :** Chaque objet déposé active le chiffrement côté serveur `ServerSideEncryption = 'AES256'` (SSE-S3).
 4. **Gestion des versions (Versioning) :** L'historique des versions est activé au niveau du bucket pour empêcher l'écrasement silencieux.
 5. **URLs pré-signées de courte durée :** Accès sécurisé temporaire (15 minutes / 900s) pour téléversement et consultation sans exposition publique du bucket.
 
-### 12.2 Écart Constaté sur les Hébergeurs Souverains Marocains (Object Lock Gap)
-- **Constat technique :** Les infrastructures infonuagiques souveraines marocaines (notamment N+ONE Datacenters et Inwi Business Cloud) fournissent des API compatibles S3 standards, mais n'exposent pas l'API propriétaire AWS S3 Object Lock en mode conformité matérielle WORM (`ObjectLockMode = COMPLIANCE` avec rétention légale `retain_until`).
+### 12.2 Analyse des Capacités Hébergeurs Souverains (Object Lock Gap)
+- **Constat technique (`unverified — confirm with provider`) :** Toutes les déclarations relatives aux capacités des hébergeurs souverains marocains (notamment N+ONE Datacenters et Inwi Business Cloud) concernant le support du verrouillage d'objets (Object Lock), les régions et les services KMS sont au statut **unverified — confirm with provider** (non vérifié — à confirmer par écrit auprès du fournisseur). L'hypothèse de travail préliminaire est que ces hébergeurs fournissent des interfaces S3 standard mais n'exposent pas d'API propriétaire AWS S3 Object Lock en mode conformité matérielle WORM (`ObjectLockMode = COMPLIANCE` avec rétention légale `retain_until`). Le nommage exact de la région (`<REGION_TBD>`) et la disponibilité effective d'Object Lock doivent être formellement confirmés par écrit par l'hébergeur avant toute mise en service.
 - **Mesures palliatives pour le pilote :**
   1. Déploiement d'une couche de stockage compatible S3 durcie (MinIO Enterprise / cluster S3 distribué) avec versioning de compartiment activé.
   2. Immuabilité stricte garantie au niveau base de données par déclencheurs PostgreSQL interdisant tout `UPDATE` ou `DELETE` sur `document_versions`, `documents`, `evidence_records` et `audit_events`.
-  3. Réplication quotidienne chiffrée off-host vers un second emplacement géographique distinct situé dans la même région de souveraineté (Casablanca Data Center 2 / Technopark).
+  3. Réplication quotidienne chiffrée off-host vers un second emplacement géographique distinct situé dans la même région de souveraineté `<REGION_TBD>` *(Note opérationnelle : cette réplication est actuellement simulée dans les tests CI et n'est pas encore configurée en production ; sa mise en place réelle est un prérequis du go-live)*.
   4. Enregistrement formel de l'écart dans la grille ASVS L2 (`docs/security/asvs.md`) en risque accepté de phase pilote (Ref: `PILOT-RISK-OBJ-LOCK-01`).
-- **Remédiation GA :** Dès disponibilité de passerelles matérielles WORM certifiées CNDP / BAM au Maroc, activation du paramètre `S3_ENABLE_OBJECT_LOCK = true`.
+- **Remédiation GA :** Dès confirmation écrite ou mise à disposition de passerelles matérielles WORM certifiées chez l'hébergeur souverain retenu, activation du paramètre `S3_ENABLE_OBJECT_LOCK = true`.
 
 
