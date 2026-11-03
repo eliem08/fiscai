@@ -54,6 +54,9 @@ services:
       dockerfile: docker/Dockerfile.api
     container_name: avenel-prod-api
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,12 +79,43 @@ services:
       timeout: 5s
       retries: 3
 
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: avenel-prod-worker
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m
+    command: ["python", "-m", "avenel.jobs.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    environment:
+      ENV: "production"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-avenel_admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-avenel}"
+      AVENEL_KMS_KEY: "${AVENEL_KMS_KEY:?Required master encryption key}"
+      DATA_RESIDENCY_POLICY: "${DATA_RESIDENCY_POLICY:-MA_ONLY}"
+      CLAMAV_HOST: "clamav"
+      CLAMAV_PORT: "3310"
+      STORAGE_BACKEND: "${STORAGE_BACKEND:-filesystem}"
+      STORAGE_LOCAL_ROOT: "/app/data/documents"
+    volumes:
+      - docdata:/app/data/documents
+
   web:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
     container_name: avenel-prod-web
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m
+      - /var/cache/nginx:rw,noexec,nosuid,size=64m
     ports:
       - "80:8080"
     depends_on:

@@ -3,7 +3,7 @@
 **Application :** AVENEL (Plateforme de préparation comptable pour fiduciaires)  
 **Date d'évaluation :** 1er novembre 2026  
 **Niveau visé :** OWASP Application Security Verification Standard (ASVS) v4.0.3 — **Niveau 2 (Applications manipulant des données sensibles et financières)**  
-**Synthèse ASVS L2 :** ASVS L2 checklist completed; 19 items met, 2 partial, 1 not met.  
+**Synthèse ASVS L2 :** ASVS L2 checklist completed; 20 items met, 1 partial, 1 not met.  
 **Périmètre :** Authentification, Gestion des sessions, Contrôle d'accès & Isolation multi-tenant, Sécurité des téléversements & Antivirus, Protection des API & Résidence.
 
 ---
@@ -20,7 +20,7 @@
 | **V8 : Gestion des Erreurs & Logs**| 8.1 à 8.3 | **Met** | Erreurs standardisées RFC 9457 `application/problem+json`, masquage des traces de pile en production, journalisation structurée JSON sans contenu de document ni PII. |
 | **V12 : Fichiers & Téléversements**| 12.1 à 12.6| **Met** | Analyse antivirale obligatoire ClamAV (signature < 48h, blocage en quarantaine si indisponible ou obsolète), vérification MIME/magic bytes (`%PDF`, `\xff\xd8\xff`, `\x89PNG`), hachage SHA-256 immuable, stockage d'objets S3 privé sans accès public direct. |
 | **V13 : Sécurité des API** | 13.1 à 13.4| **Met** | Contrat OpenAPI 3.1.0 audité sans erreur, en-tête `Idempotency-Key` obligatoire sur toute mutation (POST/PUT/PATCH/DELETE) avec détection des conflits concurrents (409), rate limiting partagé sous PostgreSQL (`rate_limit_buckets`). |
-| **V14 : Configuration & En-têtes** | 14.1 à 14.5| **Partial (1)** | En-têtes stricts CSP (`default-src 'self'`), HSTS (`max-age=63072000`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, conteneurs de production non-root. Système de fichiers lecture seule partiel selon volumes. |
+| **V14 : Configuration & En-têtes** | 14.1 à 14.5| **Met** | En-têtes stricts CSP (`default-src 'self'`), HSTS (`max-age=63072000`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, conteneurs de production non-root avec système de fichiers racine en lecture seule (`read_only: true`), scratchpad `tmpfs /tmp` (512 Mo) et stockage documents isolé. |
 
 ---
 
@@ -103,19 +103,21 @@
     - `X-Frame-Options: DENY`
     - `Referrer-Policy: strict-origin-when-cross-origin`
     - `Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()`
-- **V14.2 Isolation des conteneurs :** (Partial)
-  - Dockerfiles de production exécutés sous utilisateur non-root sans privilège (`avenel`, UID 10001).
-  - Montage de volumes en lecture seule pour les configurations sensibles.
+- **V14.2 Isolation des conteneurs (V14.2.3) :** (Met)
+  - Dockerfiles et configurations de production (`docker-compose.prod.yml`) exécutés avec `read_only: true` sur les conteneurs `api`, `web` et `worker`.
+  - Montage mémoire temporaire non-exécutable `tmpfs: /tmp:rw,noexec,nosuid,size=512m` pour les opérations transitoires OCR et tamponnage d'analyse antivirale ClamAV.
+  - Documents hébergés exclusivement sur le volume d'objets persistant (`docdata`).
+  - Processus exécutés sous utilisateur non-root sans privilège (`UID 10001`, `avenel`).
 
 ---
 
 ## 7. Éléments ASVS L2 Partiels ou Non Satisfaits — Risques Acceptés et Plans de Remédiation
 
-La grille ASVS Niveau 2 comprend 22 contrôles audités : **19 Met, 2 Partial, 1 Not Met**.
+La grille ASVS Niveau 2 comprend 22 contrôles audités : **20 Met, 1 Partial, 1 Not Met**.
 
 | Réf. ASVS | Titre & Exigence | Statut | Justification / Risque Accepté pour le Pilote | Plan de Remédiation & Échéance |
 | :--- | :--- | :---: | :--- | :--- |
 | **V6.4.1** | **Cryptographie matérielle (HSM PKCS#11)**<br>Exigence de stockage des clés maîtresses de chiffrement dans un module de sécurité matériel (HSM FIPS 140-2 L3). | **Not Met** | **Risque accepté :** Déploiement pilote souverain sur infrastructure dédiée (N+ONE / Inwi). Clé maîtresse AES-256-GCM enveloppée injectée au runtime via variable d'environnement chiffrée KMS hôte avec permissions restreintes (`chmod 400`, utilisateur non-root `avenel`). Risque d'exfiltration directe mitigé par l'absence d'exposition publique directe du port Postgres et le chiffrement au repos du stockage bloc. | **Phase 7 (GA / Banques) :** Intégration d'un module HSM PKCS#11 certifié FIPS 140-2 Niveau 3 pour le déchiffrement des clés d'enveloppe de RIB et la signature cryptographique des exports fiscaux. |
-| **V14.2.3** | **Système de fichiers conteneur en lecture seule**<br>Exigence d'exécution avec système de fichiers racine immuable (`read-only root filesystem`). | **Partial** | **Risque accepté :** Tous les conteneurs s'exécutent sous utilisateur non-root non privilégié (`UID 10001`, `avenel`). Les configurations Nginx et scripts d'initialisation de base de données sont montés en `:ro`. Les répertoires `/app/data/documents` et `/tmp` nécessitent temporairement des écritures pour l'inférence ONNX et le tamponnage transitoire des pages avant analyse antivirale ClamAV. | **Pré-production GA :** Activation de `read_only: true` sur le service API dans `docker-compose.prod.yml` et délégation des répertoires temporaires à un montage mémoire `tmpfs` non-exécutable (`tmpfs: /tmp:rw,noexec,nosuid,size=512m`). |
-| **V3.3.4** | **Révocation synchrone des sessions (Backchannel Logout)**<br>Exigence d'invalidation instantanée des jetons d'accès actifs lors d'un changement de mot de passe ou d'une déconnexion initiée par l'IdP. | **Partial** | **Risque accepté :** Les jetons d'accès JWT ont une durée de vie volontairement courte (15 minutes / 900s). La rotation du jeton de rafraîchissement dans Keycloak invalide immédiatement tout nouveau renouvellement. Les actions critiques financières (approbation, round-trip) exigent en outre une ré-authentification MFA récente datant de moins de 5 minutes (`auth_time < 300s`). | **Phase 6 / Audit de certification :** Implémentation du webhook OIDC Back-Channel Logout (RFC 8693) dans FastAPI pour alimenter une table de révocation en temps réel sous PostgreSQL (`revoked_token_ids`) interrogée en mémoire. |
+| **V14.2.3** | **Système de fichiers conteneur en lecture seule**<br>Exigence d'exécution avec système de fichiers racine immuable (`read-only root filesystem`). | **Met** | **Appliqué pour le pilote :** `read_only: true` activé sur les conteneurs `api`, `web` et `worker` dans `docker-compose.prod.yml`. Espace temporaire isolé sur `tmpfs /tmp` (`512 Mo`, `noexec`, `nosuid`). Documents strictement hébergés sur volume persistant dédié. Le pilote traitant des données réelles, cette isolation de niveau production est active immédiatement. | **Conforme au niveau requis.** |
+| **V3.3.4** | **Révocation synchrone des sessions (Backchannel Logout)**<br>Exigence d'invalidation instantanée des jetons d'accès actifs lors d'un changement de mot de passe ou d'une déconnexion initiée par l'IdP. | **Partial** | **Risque accepté :** Les jetons d'accès JWT ont une durée de vie volontairement courte (15 minutes / 900s). La rotation du jeton de rafraîchissement dans Keycloak invalide immédiatement tout nouveau renouvellement. Les actions critiques financières (approbation, round-trip) exigent en outre une ré-authentification MFA récente datant de moins de 5 minutes (`auth_time < 300s`). | **Phase 6 / Audit de certification :** Implémentation du webhook OIDC Back-Channel Logout (OpenID Connect Back-Channel Logout 1.0) dans FastAPI pour alimenter une table de révocation en temps réel sous PostgreSQL (`revoked_token_ids`) interrogée en mémoire. |
 

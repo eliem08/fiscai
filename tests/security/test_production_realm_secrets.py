@@ -65,3 +65,4 @@ def test_test_totp_secret_confined_to_ci_test_realm_and_fixtures():
 
     # The test realm explicitly contains the test fixture secret
     assert KNOWN_CI_TOTP_SECRET in test_content
+
