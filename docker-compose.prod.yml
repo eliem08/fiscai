@@ -48,6 +48,23 @@ services:
     volumes:
       - clamav_db:/var/lib/clamav
 
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z@sha256:7b5ea3c7c223c72382c4ee67cfc0d6ea8f5fcbb72c1c68fceceab245d81b89fc
+    container_name: avenel-prod-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-avenel_s3_admin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?Required S3 secret access key}
+      MINIO_REGION_NAME: ${S3_REGION:-ma-casablanca-1}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: .
@@ -62,6 +79,8 @@ services:
         condition: service_healthy
       clamav:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       ENV: "production"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-avenel_admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-avenel}"
@@ -69,10 +88,14 @@ services:
       DATA_RESIDENCY_POLICY: "${DATA_RESIDENCY_POLICY:-MA_ONLY}"
       CLAMAV_HOST: "clamav"
       CLAMAV_PORT: "3310"
-      STORAGE_BACKEND: "${STORAGE_BACKEND:-filesystem}"
-      STORAGE_LOCAL_ROOT: "/app/data/documents"
-    volumes:
-      - docdata:/app/data/documents
+      STORAGE_BACKEND: "s3"
+      S3_ENDPOINT_URL: "${S3_ENDPOINT_URL:-http://minio:9000}"
+      S3_REGION: "${S3_REGION:-ma-casablanca-1}"
+      S3_BUCKET_NAME: "${S3_BUCKET_NAME:-avenel-documents}"
+      S3_ACCESS_KEY_ID: "${S3_ACCESS_KEY_ID:-avenel_s3_admin}"
+      S3_SECRET_ACCESS_KEY: "${S3_SECRET_ACCESS_KEY:?Required S3 secret access key}"
+      S3_SERVER_SIDE_ENCRYPTION: "${S3_SERVER_SIDE_ENCRYPTION:-AES256}"
+      S3_ENABLE_OBJECT_LOCK: "${S3_ENABLE_OBJECT_LOCK:-false}"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
       interval: 15s
@@ -94,6 +117,8 @@ services:
         condition: service_healthy
       clamav:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       ENV: "production"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-avenel_admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-avenel}"
@@ -101,10 +126,14 @@ services:
       DATA_RESIDENCY_POLICY: "${DATA_RESIDENCY_POLICY:-MA_ONLY}"
       CLAMAV_HOST: "clamav"
       CLAMAV_PORT: "3310"
-      STORAGE_BACKEND: "${STORAGE_BACKEND:-filesystem}"
-      STORAGE_LOCAL_ROOT: "/app/data/documents"
-    volumes:
-      - docdata:/app/data/documents
+      STORAGE_BACKEND: "s3"
+      S3_ENDPOINT_URL: "${S3_ENDPOINT_URL:-http://minio:9000}"
+      S3_REGION: "${S3_REGION:-ma-casablanca-1}"
+      S3_BUCKET_NAME: "${S3_BUCKET_NAME:-avenel-documents}"
+      S3_ACCESS_KEY_ID: "${S3_ACCESS_KEY_ID:-avenel_s3_admin}"
+      S3_SECRET_ACCESS_KEY: "${S3_SECRET_ACCESS_KEY:?Required S3 secret access key}"
+      S3_SERVER_SIDE_ENCRYPTION: "${S3_SERVER_SIDE_ENCRYPTION:-AES256}"
+      S3_ENABLE_OBJECT_LOCK: "${S3_ENABLE_OBJECT_LOCK:-false}"
 
   web:
     build:
@@ -126,5 +155,5 @@ volumes:
   pgdata:
   wal_archive:
   clamav_db:
-  docdata:
+  miniodata:
 

@@ -182,3 +182,24 @@ Pour assurer que la transition d'état au moment de l'approbation n'altère pas 
 - Si l'empreinte soumise ne correspond pas à l'empreinte recalculée en direct sur les propositions et rapprochements actifs, l'API renvoie une erreur `409 Conflict` (`ApprovalStaleError`).
 - Toute modification ultérieure d'un rapprochement accepté ou d'une écriture entraîne le refus immédiat de l'export (`ExportHashMismatchError`, Invariant #7).
 
+---
+
+## 12. Architecture de Stockage d'Objets S3 et Déclaration de Risque Object Lock (Pilot-1)
+
+### 12.1 Principes Directeurs
+1. **Élimination des volumes locaux en production :** Les documents ne sont jamais hébergés sur des volumes Docker locaux (`docdata` supprimé en production).
+2. **Stockage d'objets compatible S3 souverain :** Les documents sont hébergés sur stockage d'objets compatible S3 situé dans la région de résidence du tenant (`DATA_RESIDENCY_POLICY` : `MA_ONLY` à Casablanca ou `EU_ALLOWED` dans l'Union Européenne).
+3. **Chiffrement au repos obligatoire :** Chaque objet déposé active le chiffrement côté serveur `ServerSideEncryption = 'AES256'` (SSE-S3).
+4. **Gestion des versions (Versioning) :** L'historique des versions est activé au niveau du bucket pour empêcher l'écrasement silencieux.
+5. **URLs pré-signées de courte durée :** Accès sécurisé temporaire (15 minutes / 900s) pour téléversement et consultation sans exposition publique du bucket.
+
+### 12.2 Écart Constaté sur les Hébergeurs Souverains Marocains (Object Lock Gap)
+- **Constat technique :** Les infrastructures infonuagiques souveraines marocaines (notamment N+ONE Datacenters et Inwi Business Cloud) fournissent des API compatibles S3 standards, mais n'exposent pas l'API propriétaire AWS S3 Object Lock en mode conformité matérielle WORM (`ObjectLockMode = COMPLIANCE` avec rétention légale `retain_until`).
+- **Mesures palliatives pour le pilote :**
+  1. Déploiement d'une couche de stockage compatible S3 durcie (MinIO Enterprise / cluster S3 distribué) avec versioning de compartiment activé.
+  2. Immuabilité stricte garantie au niveau base de données par déclencheurs PostgreSQL interdisant tout `UPDATE` ou `DELETE` sur `document_versions`, `documents`, `evidence_records` et `audit_events`.
+  3. Réplication quotidienne chiffrée off-host vers un second emplacement géographique distinct situé dans la même région de souveraineté (Casablanca Data Center 2 / Technopark).
+  4. Enregistrement formel de l'écart dans la grille ASVS L2 (`docs/security/asvs.md`) en risque accepté de phase pilote (Ref: `PILOT-RISK-OBJ-LOCK-01`).
+- **Remédiation GA :** Dès disponibilité de passerelles matérielles WORM certifiées CNDP / BAM au Maroc, activation du paramètre `S3_ENABLE_OBJECT_LOCK = true`.
+
+

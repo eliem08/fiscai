@@ -8,9 +8,9 @@
 
 ---
 
-## 1. Architecture de Sauvegarde Continue (PITR)
+## 1. Architecture de Sauvegarde Continue (PITR) et Réplication Documentaire
 
-La stratégie repose sur deux composantes complémentaires :
+La stratégie repose sur trois composantes complémentaires :
 1. **Sauvegardes de base quotidiennes (Base Backups) :**
    - Générées chaque nuit à 02h00 UTC via `pg_basebackup` (chiffrées AES-256 au repos).
    - Rétention : 30 jours calendaires glissants.
@@ -18,6 +18,9 @@ La stratégie repose sur deux composantes complémentaires :
    - Mode PostgreSQL : `wal_level = replica`, `archive_mode = on`.
    - Commande d'archivage : Expédition immédiate des segments WAL de 16 Mo vers le volume de stockage persistant chiffré (`wal_archive/`).
    - Permet de restaurer l'état exact de la base à la seconde près jusqu'à l'incident.
+3. **Réplication chiffrée quotidienne du stockage d'objets (Document Storage Replication) :**
+   - Synchronisation nocturne chiffrée AES-256-GCM de l'ensemble des pièces originales et packs de preuves (`documents/`) vers un second site d'hébergement souverain situé dans la même région de résidence (`ma-casablanca-1` ou `eu-west-1`).
+   - Rétention : Conforme à la période légale de conservation (10 ans selon le CGI art. 145 / pack fiscal).
 
 ---
 
@@ -31,10 +34,13 @@ La stratégie repose sur deux composantes complémentaires :
    ```
 2. Vérifier que la variable `DATA_RESIDENCY_POLICY` respecte la localisation requise.
 
-### Étape 2 : Restauration de la Sauvegarde de Base
+### Étape 2 : Restauration de la Sauvegarde de Base et des Documents
 ```bash
 # Extraction de la sauvegarde de base la plus récente
 tar -xzvf /opt/avenel/backups/base_backup_latest.tar.gz -C /var/lib/postgresql/data_restored/
+
+# Restauration et déchiffrement des pièces d'archives documentaires (AES-256-GCM)
+python -c "from scripts.test_backup_restore import restore_document_storage; from pathlib import Path; restore_document_storage(Path('/opt/avenel/backups/doc_replication_latest.enc.tar.gz'), Path('/var/lib/avenel/documents_restored'), enc_key)"
 ```
 
 ### Étape 3 : Configuration de la Récupération Temporelle (Point-In-Time)
@@ -52,12 +58,12 @@ python scripts/test_backup_restore.py
 ```
 
 ### Étape 5 : Liste des Contrôles Post-Restauration Obligatoires
-Le rétablissement en production exige le passage avec succès de 4 jalons :
+Le rétablissement en production exige le passage avec succès de 5 jalons :
 1. **Contrôle d'intégrité des migrations :**
    ```bash
    python scripts/check_migration_hashes.py
    ```
-   *Doit valider que les 14 fichiers de migration 001 à 007 sont conformes aux empreintes gelées.*
+   *Doit valider que les 16 fichiers de migration 001 à 008 sont conformes aux empreintes gelées.*
 2. **Contrôle d'isolation PostgreSQL RLS (30/30 tables) :**
    ```bash
    DATABASE_URL=postgresql://postgres:postgres@localhost:5432/avenel_restored python scripts/rls_check.py
@@ -70,4 +76,7 @@ Le rétablissement en production exige le passage avec succès de 4 jalons :
    *Vérifie que la séquence cryptographique SHA-256 de chaque tenant est linéaire et exempte de rupture.*
 4. **Contrôle de déchiffrement des RIB :**
    *Vérification avec la clé KMS d'environnement (`AVENEL_KMS_KEY`) que les données bancaires chiffrées sont récupérables.*
+5. **Contrôle d'intégrité cryptographique des documents restaurés :**
+   *Extraction d'un échantillon de pièces depuis le stockage restauré, recalcul déterministe de leur empreinte SHA-256 et comparaison stricte avec la colonne `document_versions.sha256`.*
+
 
