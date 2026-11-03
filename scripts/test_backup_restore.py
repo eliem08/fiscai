@@ -185,7 +185,10 @@ def restore_document_storage(backup_archive_path: Path, target_storage_dir: Path
         tar_path.write_bytes(plaintext)
         target_storage_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(tar_path, "r:gz") as tar:
-            tar.extractall(path=target_storage_dir)
+            if hasattr(tarfile, "data_filter"):
+                tar.extractall(path=target_storage_dir, filter="data")
+            else:
+                tar.extractall(path=target_storage_dir)
     finally:
         if tar_path.exists():
             tar_path.unlink()
@@ -342,13 +345,18 @@ def test_backup_and_restore(primary_url: str | None = None) -> int:
             cur.execute(
                 """
                 SELECT id, tenant_id, client_entity_id, object_key, sha256, byte_size
-                FROM document_versions;
-                """
+                FROM document_versions
+                WHERE object_key = ANY(%s);
+                """,
+                ([s[0] for s in seeded_docs],),
             )
             doc_rows = cur.fetchall()
 
-        if not doc_rows:
-            print("FAILED: No document_versions found in restored database.", file=sys.stderr)
+        if len(doc_rows) < len(seeded_docs):
+            print(
+                f"FAILED: Expected {len(seeded_docs)} sample document_versions in restored DB, found {len(doc_rows)}.",
+                file=sys.stderr,
+            )
             return 1
 
         for row in doc_rows:
